@@ -87,8 +87,13 @@ class ConnectMerchan:
         """Guarda o HTML da janela de filtros (ou do painel/lista visível) para ajustar o robô."""
         try:
             dialogo = self._dialogo()
-            alvo = dialogo if dialogo.count() and dialogo.first.is_visible() else None
-            html = alvo.first.evaluate("e => e.outerHTML") if alvo else None
+            if dialogo.count() and dialogo.first.is_visible():
+                alvo = dialogo.first
+            else:  # lista de pesquisas + rodapé (Registros por página, Exportar)
+                alvo = self.page.get_by_text(rx("Todas as pesquisas")).first.locator(
+                    "xpath=ancestor::*[.//*[contains(., 'Exportar')]][1]"
+                )
+            html = alvo.evaluate("e => e.outerHTML") if alvo.count() else None
             if html:
                 arquivo.write_text(html, encoding="utf-8")
                 self.log.warning("Estrutura da tela salva em %s", arquivo)
@@ -228,49 +233,79 @@ class ConnectMerchan:
 
     def mostrar_100_por_pagina(self) -> None:
         def acao():
-            rotulo = self.page.get_by_text(rx("Registros por pagina"))
+            rotulo = self.page.get_by_text(rx("Registros por pagina")).locator("visible=true")
             if not rotulo.count():
-                return
-            seletor = rotulo.first.locator("xpath=preceding-sibling::*[1]")
-            if "100" in seletor.inner_text():
-                return
-            seletor.click()
-            self._visivel(self.page.get_by_text("100", exact=True)).click()
+                raise LookupError("não achei 'Registros por página'")
+            perto = rotulo.first.locator(
+                "xpath=ancestor::*[.//select or .//*[@role='combobox' or @role='button']][1]"
+            )
+            nativo = perto.locator("select")
+            if nativo.count():
+                nativo.first.select_option("100")
+            else:
+                seletor = perto.locator("[role='combobox'], [role='button']").filter(
+                    has_text=re.compile(r"^\s*\d+\s*$")
+                ).first
+                if seletor.inner_text().strip() == "100":
+                    return
+                seletor.click()
+                opcao = self.page.get_by_role("option", name=re.compile(r"^\s*100\s*$"))
+                if opcao.count():
+                    opcao.first.click()
+                else:
+                    self._visivel(self.page.get_by_text("100", exact=True)).click()
             self._aguardar_carregar()
+            self.page.wait_for_timeout(1000)
 
-        self._passo("mudar a lista para 100 registros por página", acao)
+        self._passo("mudar 'Registros por página' para 100", acao)
 
     # ---------- seleção e exportação ----------
+
+    def _linhas(self) -> Locator:
+        """Linhas de dados da lista 'Todas as pesquisas' (tabela comum ou grade com role=row)."""
+        grade = self.page.get_by_role("row").filter(
+            has=self.page.locator("[role='gridcell'], [role='cell'], td")
+        )
+        return grade if grade.count() else self.page.locator("table tbody tr")
 
     def marcar_variavel(self) -> int:
         """Marca só as pesquisas cujo nome contém 'Variavel'. Devolve quantas marcou (-1 = manual)."""
 
         def acao() -> int:
-            linhas = self.page.locator("table tbody tr")
-            linhas.first.wait_for(timeout=self.cfg.timeout_ms)
+            self._linhas().first.wait_for(timeout=self.cfg.timeout_ms)
+            linhas = self._linhas()
             marcadas = 0
             for i in range(linhas.count()):
                 linha = linhas.nth(i)
-                caixa = linha.get_by_role("checkbox").first
+                caixa = linha.get_by_role("checkbox")
+                if not caixa.count():
+                    caixa = linha.locator("input[type='checkbox']")
                 if not caixa.count():
                     continue
+                caixa = caixa.first
                 quer = bool(RE_VARIAVEL.search(sem_acento(linha.inner_text())))
                 if caixa.is_checked() != quer:
                     try:
-                        caixa.set_checked(quer)
+                        caixa.set_checked(quer, timeout=4000)
                     except PlaywrightError:
                         caixa.click(force=True)
+                if caixa.is_checked() != quer:
+                    raise LookupError(f"não consegui {'marcar' if quer else 'desmarcar'} a linha {i + 1}")
                 marcadas += quer
+            self.log.info("Linhas na lista: %d; marcadas (Variavel): %d.", linhas.count(), marcadas)
             total = self.page.get_by_text(re.compile(r"^\s*\d+\s+Respondidas?\s*$"))
             if total.count():
                 qtd = int(re.search(r"\d+", total.first.inner_text())[0])
                 if qtd > linhas.count():
-                    raise LookupError(
-                        f"há {qtd} pesquisas e só {linhas.count()} na página — confira as outras páginas"
+                    self.log.warning(
+                        "O sistema mostra %d respondidas e a lista tem %d linhas — confira se "
+                        "há outra página.", qtd, linhas.count()
                     )
             return marcadas
 
-        resultado = self._passo("marcar apenas as pesquisas 'Variavel …'", acao)
+        resultado = self._passo(
+            "marcar apenas as pesquisas 'Variavel …' (e desmarcar as outras)", acao
+        )
         return -1 if resultado is None else resultado
 
     def _painel_aberto(self) -> bool:

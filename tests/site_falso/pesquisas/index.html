@@ -23,9 +23,14 @@
 <div id="total"></div>
 <div id="carregando" class="oculto">Carregando pesquisas...</div>
 <h3>Todas as pesquisas</h3>
-<table><thead><tr><th></th><th>ID</th><th>Nome</th></tr></thead><tbody id="corpo"></tbody></table>
-<div><span id="pp" onclick="document.getElementById('ppl').classList.toggle('oculto')">10</span><span>Registros por página</span></div>
-<div id="ppl" class="oculto"><div onclick="porPagina(10)">10</div><div onclick="porPagina(50)">50</div><div onclick="porPagina(100)">100</div></div>
+<!-- como no sistema real: grade (role=row/gridcell), não <table> -->
+<div role="grid">
+  <div role="row"><div role="columnheader"><input type="checkbox" aria-label="Selecionar todas"></div>
+    <div role="columnheader">ID</div><div role="columnheader">Nome</div></div>
+  <div id="corpo"></div>
+</div>
+<div id="sel"></div>
+<div class="rodape"><div role="combobox" id="pp" onclick="abrirPP()">10</div> <p>Registros por página</p></div>
 <button onclick="document.getElementById('menu').classList.toggle('oculto')">Exportar</button>
 <div id="menu" class="oculto">
   <div>1. Export Pesquisas (XLS)</div>
@@ -104,10 +109,18 @@ function aplicar(){
 }
 function desenharTabela(){
   document.getElementById('corpo').innerHTML = linhas.slice(0,pagina).map(([id,nome])=>
-    `<tr><td><input type="checkbox" data-id="${id}"></td><td>${id}</td><td>${nome}</td></tr>`).join('');
+    `<div role="row"><div role="gridcell"><input type="checkbox" data-id="${id}" aria-label="Selecionar linha"></div>`+
+    `<div role="gridcell">${id}</div><div role="gridcell">${nome}</div></div>`).join('');
+  document.querySelectorAll('#corpo input').forEach(c => c.onchange = contarSel);
 }
-function porPagina(n){ pagina=n; document.getElementById('pp').textContent=String(n);
-  document.getElementById('ppl').classList.add('oculto'); desenharTabela(); }
+function contarSel(){ const n=document.querySelectorAll('#corpo input:checked').length;
+  document.getElementById('sel').textContent = n ? `${n} linhas selecionadas` : ''; }
+function abrirPP(){ // menu de opções no fim da página (como os menus suspensos do sistema)
+  const ul=document.createElement('ul'); ul.role='listbox'; ul.id='ppl';
+  [10,30,50,100].forEach(n=>{ const li=document.createElement('li'); li.role='option'; li.textContent=n;
+    li.onclick=()=>{ pagina=n; document.getElementById('pp').textContent=String(n); ul.remove(); desenharTabela(); };
+    ul.appendChild(li); });
+  document.body.appendChild(ul); }
 function togglePainel(){ document.getElementById('painel').classList.toggle('oculto'); }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.getElementById('painel').classList.add('oculto'); });
 function exportar(){
