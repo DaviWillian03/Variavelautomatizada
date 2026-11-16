@@ -1,9 +1,19 @@
 <!doctype html>
 <html lang="pt-BR"><meta charset="utf-8"><title>Portal Broker (falso)</title>
+<style>
+  /* como no portal real: menu recolhido mostra só ícones; o nome aparece ao passar o mouse */
+  nav { width: 60px; } nav:hover { width: 260px; }
+  nav li .nome { display: none; } nav:hover li .nome { display: inline; }
+  nav li { list-style: none; padding: 12px; cursor: pointer; }
+</style>
 <body>
-  <h1>Portal Broker — Launchers</h1>
-  <!-- como no portal real: o Connect Merchan abre em outra aba, em outro endereço -->
-  <a id="connect" href="#" onclick="window.open('http://localhost:' + location.port + '/pesquisas/', '_blank'); return false;">
-    Connect Merchan
-  </a>
+  <h1>Olá!</h1>
+  <nav><ul>
+    <li><span>▦</span> <span class="nome">Painel</span></li>
+    <li><span>🔔</span> <span class="nome">Notificações</span></li>
+    <li onclick="window.open('http://localhost:' + location.port + '/pesquisas/', '_blank')">
+      <span>C</span> <span class="nome">Connect Merchan</span>
+    </li>
+    <li><span>⇥</span> <span class="nome">Sair</span></li>
+  </ul></nav>
 </body></html>

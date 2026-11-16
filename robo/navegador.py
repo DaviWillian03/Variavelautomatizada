@@ -152,6 +152,30 @@ def _esperar_connect(contexto: BrowserContext, cfg: Config) -> Page | None:
     return None
 
 
+def clicar_no_menu(page: Page, nome: str) -> None:
+    """Clica num item do menu lateral do portal, mesmo com o menu recolhido.
+
+    Com o menu recolhido só aparecem os ícones; o nome do item fica escondido até o mouse
+    passar por cima. Então: acha o item pelo nome (mesmo escondido), passa o mouse no item
+    (o menu abre) e clica.
+    """
+    texto = page.get_by_text(re.compile(rf"^\s*{re.escape(nome)}\s*$", re.I))
+    texto.first.wait_for(state="attached", timeout=10_000)
+    if texto.locator("visible=true").count():
+        texto.locator("visible=true").first.click()
+        return
+    item = texto.first.locator(
+        "xpath=ancestor::*[self::a or self::button or self::li or @role='button' "
+        "or @role='menuitem' or @role='link'][1]"
+    )
+    item.hover()
+    page.wait_for_timeout(600)  # animação do menu abrindo
+    if texto.locator("visible=true").count():
+        texto.locator("visible=true").first.click()
+    else:
+        item.click()
+
+
 def abrir_connect_merchan(
     contexto: BrowserContext, cfg: Config, log: logging.Logger, term: "Terminal"
 ) -> Page:
@@ -165,9 +189,7 @@ def abrir_connect_merchan(
         portal.bring_to_front()
         log.info("Portal encontrado. Abrindo o Connect Merchan…")
         try:
-            portal.get_by_text(re.compile(r"Connect\s*Merchan", re.I)).locator(
-                "visible=true"
-            ).first.click()
+            clicar_no_menu(portal, "Connect Merchan")
         except PlaywrightError as erro:
             log.warning("Não achei o botão do Connect Merchan (%s).", str(erro).splitlines()[0])
             log.warning("Print: %s", capturar_tela(portal, cfg.pasta_saida, "ajuda"))
