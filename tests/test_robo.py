@@ -212,7 +212,7 @@ def test_fluxo_completo(contexto, cfg, servidor, cenario):
         "",  # data início sugerida (01/11/2026)
         "",  # data fim sugerida (15/11/2026)
         "",  # pasta "Variavel Novembro"
-        "1,2,3",  # Ana (2 variáveis), Bruno (nenhuma), Carla (1)
+        "1,2,3,4",  # Ana (2 variáveis), Bruno (nenhuma), Carla (1), Carla de Mendes ("Nenhuma linha")
         "s",  # começar
     )
     term = Terminal(respostas, lambda _m: None)
@@ -227,6 +227,7 @@ def test_fluxo_completo(contexto, cfg, servidor, cenario):
 
     situacoes = dict(resumo)
     assert situacoes["1002 - Bruno Exemplo Lima"] == "sem pesquisa de variável"
+    assert situacoes["1004 - Carla de Mendes"] == "sem pesquisa de variável"  # lista vazia
     assert situacoes["1001 - Ana Teste Souza"].startswith("ok")
 
     # só as pesquisas de variável foram exportadas, nunca as "Antes E Depois"
@@ -243,6 +244,7 @@ def test_fluxo_completo(contexto, cfg, servidor, cenario):
         "1001 - Ana Teste Souza",
         "1002 - Bruno Exemplo Lima",
         "1003 - Carla Ficticia Dias",
+        "1004 - Carla de Mendes",
     ]
     assert list(cfg.pasta_saida.glob("*_resumo.txt"))
     assert not list(cfg.pasta_saida.glob("*_ajuda.png"))  # tudo automático, sem pedir ajuda

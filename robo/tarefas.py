@@ -12,7 +12,8 @@ from playwright.sync_api import Page
 
 from .config import Config, area_de_trabalho
 from .connect import ColaboradorPulado, ConnectMerchan
-from .interacao import Periodo, Terminal
+from .interacao import Periodo, Terminal, periodo_sugerido
+from .janela import escolher_na_janela, janela_disponivel
 from .navegador import capturar_tela
 from .planilha import Colaborador, ler_planilha
 
@@ -24,22 +25,38 @@ class Plano:
     colaboradores: list[Colaborador]
 
 
-def preparar(cfg: Config, log: logging.Logger, term: Terminal, hoje: date | None = None) -> Plano | None:
-    """Perguntas feitas ANTES de abrir o Chrome (período, pasta e quem puxar)."""
+def preparar(
+    cfg: Config,
+    log: logging.Logger,
+    term: Terminal,
+    hoje: date | None = None,
+    janela: bool = False,
+) -> Plano | None:
+    """Escolhas feitas ANTES de abrir o Chrome: na janela com caixinhas ou no terminal."""
     colaboradores = ler_planilha(cfg.planilha)
     log.info("Planilha: %d colaboradores.", len(colaboradores))
 
-    periodo = term.perguntar_periodo(hoje or date.today())
-    pasta_base: Path = area_de_trabalho(cfg) / term.perguntar_pasta_mae(periodo)
-    escolhidos = term.escolher_colaboradores(colaboradores)
+    if janela and janela_disponivel():
+        log.info("Escolha o período, a pasta e os colaboradores na janela que abriu.")
+        escolha = escolher_na_janela(colaboradores, periodo_sugerido(hoje or date.today()))
+        if escolha is None:
+            log.info("Cancelado antes de começar.")
+            return None
+        periodo, pasta, escolhidos = escolha
+        pasta_base = area_de_trabalho(cfg) / pasta
+    else:
+        periodo = term.perguntar_periodo(hoje or date.today())
+        pasta_base = area_de_trabalho(cfg) / term.perguntar_pasta_mae(periodo)
+        escolhidos = term.escolher_colaboradores(colaboradores)
+        term.mostrar(f"\nVou puxar {len(escolhidos)} colaborador(es).")
+        if not term.confirmar("Abrir o Chrome e começar?"):
+            log.info("Cancelado antes de começar.")
+            return None
 
-    term.mostrar(
-        f"\nVou puxar {len(escolhidos)} colaborador(es), período "
-        f"{periodo.texto(periodo.inicio)} a {periodo.texto(periodo.fim)}, salvando em {pasta_base}"
+    log.info(
+        "Vou puxar %d colaborador(es), período %s a %s, salvando em %s",
+        len(escolhidos), periodo.texto(periodo.inicio), periodo.texto(periodo.fim), pasta_base,
     )
-    if not term.confirmar("Abrir o Chrome e começar?"):
-        log.info("Cancelado antes de começar.")
-        return None
     return Plano(periodo, pasta_base, escolhidos)
 
 

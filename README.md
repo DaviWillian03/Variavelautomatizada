@@ -6,10 +6,13 @@ supervisor, na Área de Trabalho.
 
 ## O que ele faz
 
-1. Na janela preta, o robô pergunta **antes de abrir o Chrome**:
-   - **período** (sugere a última quinzena fechada, ex.: 01/11/2026 a 15/11/2026);
-   - **pasta** na Área de Trabalho (sugere `Variavel <Mês>`);
-   - **quem puxar**: Enter = todos, `EMI` / `FLA` / `RUA` = de um supervisor, ou números (`1,4,10-15`).
+1. **Antes de abrir o Chrome**, aparece uma janela com:
+   - **período** (já vem com a última quinzena fechada, ex.: 01/11/2026 a 15/11/2026);
+   - **pasta** na Área de Trabalho (acompanha o mês: `Variavel Novembro`);
+   - **colaboradores com caixinhas**, separados por supervisor (V EMI / V FLA / V RUA), com
+     **“Selecionar todos”** e **“todos de &lt;supervisor&gt;”**.
+   Clique em **Abrir o Chrome e começar**. (Sem janela disponível, as mesmas perguntas
+   aparecem no terminal; para forçar o terminal use `INTERFACE=terminal` no `.env`.)
 2. Abre o **Google Chrome** (perfil próprio do robô) na tela de login do Broker 3.0 e **você**
    faz o login: usuário, senha, “Não sou um robô” e Microsoft Authenticator. Durante o login o
    robô **não está conectado** ao Chrome — ele só olha o endereço das abas. O robô **nunca**
@@ -25,7 +28,8 @@ supervisor, na Área de Trabalho.
 5. No fim mostra um **resumo** (salvos, sem pesquisa de variável, pulados, erros) e grava em `saida/`.
 
 Regras:
-- Colaborador **sem** pesquisa de variável no período: não exporta, aparece no resumo.
+- Colaborador **sem** pesquisa de variável no período (ou lista com **“Nenhuma linha”**):
+  não exporta, pula para o próximo e aparece no resumo.
 - Mesmo primeiro nome na mesma pasta: usa nome + sobrenome (ex.: `Daniela Aparecida.pdf`).
 - Arquivo já existente **não é sobrescrito**: vira `Allan (2).pdf`.
 - **Trava de segurança**: só exporta se o filtro na tela estiver no colaborador certo.

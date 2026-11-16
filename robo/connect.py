@@ -287,7 +287,16 @@ class ConnectMerchan:
         """Marca só as pesquisas cujo nome contém 'Variavel'. Devolve quantas marcou (-1 = manual)."""
 
         def acao() -> int:
-            self._linhas().first.wait_for(timeout=self.cfg.timeout_ms)
+            # espera a lista: ou aparecem linhas, ou o sistema mostra "Nenhuma linha"
+            vazio = self.page.get_by_text(rx("Nenhuma linha")).locator("visible=true")
+            prazo = time.monotonic() + self.cfg.timeout_ms / 1000
+            while not self._linhas().count():
+                if vazio.count():
+                    self.log.info("Lista vazia ('Nenhuma linha'): nada para exportar.")
+                    return 0
+                if time.monotonic() > prazo:
+                    raise LookupError("a lista de pesquisas não carregou")
+                self.page.wait_for_timeout(300)
             linhas = self._linhas()
             marcadas = 0
             for i in range(linhas.count()):

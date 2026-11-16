@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from playwright.sync_api import BrowserContext, sync_playwright
@@ -48,7 +49,7 @@ def main() -> int:
     term = Terminal()
     log.info("Robô da Variável iniciado.")
     try:
-        plano = preparar(cfg, log, term)
+        plano = preparar(cfg, log, term, janela=os.getenv("INTERFACE", "janela") != "terminal")
         if plano is None:
             return 2
         with sync_playwright() as pw, navegador_aberto(

@@ -8,6 +8,6 @@ logs/
 *.csv
 *.pdf
 !tests/site_falso/*.pdf
-.venv/
+.venv*/
 __pycache__/
 .pytest_cache/

@@ -55,7 +55,7 @@
 const OPCOES = {
   situacao: ["Pendente","Recebida","Respondida"],
   tipo: ["Pesquisa","Loja Perfeita"],
-  colaborador: ["1001 - Ana Teste Souza","1002 - Bruno Exemplo Lima","1003 - Carla Ficticia Dias"],
+  colaborador: ["1001 - Ana Teste Souza","1002 - Bruno Exemplo Lima","1003 - Carla Ficticia Dias","1004 - Carla de Mendes"],
 };
 const DADOS = {
   "1001": [...Array(10).keys()].map(i=>[300+i,"Antes E Depois"]).concat([[401,"Variavel Novembro 1/2"],[402,"Variável Novembro 1/2"]]),
@@ -110,6 +110,7 @@ function aplicar(){
     desenharTabela(); }, 400);
 }
 function desenharTabela(){
+  if (!linhas.length) { document.getElementById('corpo').innerHTML = '<div>Nenhuma linha</div>'; return; }
   document.getElementById('corpo').innerHTML = linhas.slice(0,pagina).map(([id,nome])=>
     `<div role="row"><div role="gridcell"><input type="checkbox" data-id="${id}" aria-label="Selecionar linha"></div>`+
     `<div role="gridcell">${id}</div><div role="gridcell">${nome}</div></div>`).join('');
