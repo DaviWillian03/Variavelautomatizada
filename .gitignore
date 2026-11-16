@@ -1,0 +1,8 @@
+# Nunca versionar: segredos, sessão do navegador e resultados
+.env
+perfil-navegador/
+saida/
+logs/
+.venv/
+__pycache__/
+.pytest_cache/
