@@ -131,7 +131,10 @@ class ConnectMerchan:
         opção certa à vista (e evita clicar num texto igual que está atrás da janela).
         """
         dialogo = self._dialogo()
-        dialogo.get_by_text(rx(rotulo, inteiro=True)).first.click()
+        campo = dialogo.get_by_text(rx(rotulo, inteiro=True)).locator("visible=true")
+        if not campo.count():
+            raise LookupError(f"não achei o campo '{rotulo}' na janela de filtros")
+        campo.first.click()
         self.page.wait_for_timeout(500)
         caixa = self.page.get_by_placeholder(rx("Pesquisar")).locator("visible=true")
         if caixa.count():
@@ -151,7 +154,9 @@ class ConnectMerchan:
             if not alvo.is_checked():
                 raise LookupError(f"a opção de '{rotulo}' não ficou marcada")
         else:
-            self.page.get_by_text(opcao).locator("visible=true").last.click()
+            opcoes = self.page.get_by_text(opcao).locator("visible=true")
+            opcoes.last.wait_for(timeout=8000)  # a lista pode demorar para buscar
+            opcoes.last.click()
         dialogo.get_by_text(rx("Selecione filtros")).first.click()  # fecha a lista
         self.page.wait_for_timeout(300)
 

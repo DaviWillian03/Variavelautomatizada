@@ -39,7 +39,8 @@
   <div>Periodo Começo das Respostas</div><input id="ini" placeholder="Data Inicio"><input id="fim" placeholder="Data Fim">
   <div class="sel" data-campo="situacao" data-rotulo="Situação"><span>Situação</span></div>
   <div class="sel" data-campo="tipo" data-rotulo="Tipo de formulario"><span>Tipo de formulario</span></div>
-  <div class="sel" data-campo="colaborador" data-rotulo="Colaborador"><span>Colaborador</span></div>
+  <span style="display:none">Colaborador</span>
+  <div class="busca" data-campo="colaborador"><span>Colaborador</span><input class="oculto"></div>
   <button onclick="aplicar()">Aplicar</button>
 </div>
 
@@ -58,7 +59,7 @@ let estado = {}; let linhas = []; let pagina = 10; let proximo = 900;
 window.exportados = []; window.filtrosAplicados = [];
 
 document.querySelectorAll('.sel').forEach(sel => sel.querySelector('span').onclick = () => abrirLista(sel));
-document.addEventListener('click', e => { if (!e.target.closest('.sel')) document.querySelectorAll('.lista').forEach(l=>l.remove()); });
+document.addEventListener('click', e => { if (!e.target.closest('.sel') && !e.target.closest('.busca')) document.querySelectorAll('.lista').forEach(l=>l.remove()); });
 function abrirLista(sel){
   document.querySelectorAll('.lista').forEach(l=>l.remove());
   const l = document.createElement('div'); l.className='lista';
@@ -73,8 +74,21 @@ function abrirLista(sel){
   };
   busca.oninput=desenhar; desenhar(); sel.appendChild(l); busca.focus();
 }
+document.querySelectorAll('.busca').forEach(b => {
+  const span = b.querySelector('span'), inp = b.querySelector('input');
+  span.onclick = () => { inp.classList.remove('oculto'); inp.value=''; inp.focus(); };
+  inp.oninput = () => {
+    b.querySelectorAll('.opc').forEach(x=>x.remove());
+    setTimeout(() => OPCOES[b.dataset.campo].filter(o=>o.includes(inp.value)).forEach(o => {
+      const d=document.createElement('div'); d.className='opc'; d.textContent=o;
+      d.onclick=()=>{ estado[b.dataset.campo]=o; span.textContent=o; inp.classList.add('oculto');
+                      b.querySelectorAll('.opc').forEach(x=>x.remove()); };
+      b.appendChild(d); }), 300);
+  };
+});
 function abrirFiltros(){ document.getElementById('dlg').classList.remove('oculto'); }
 function limpar(){ estado={}; document.querySelectorAll('.sel').forEach(s=>s.querySelector('span').textContent=s.dataset.rotulo);
+  document.querySelectorAll('.busca span').forEach(s=>s.textContent='Colaborador');
   document.getElementById('ini').value=''; document.getElementById('fim').value=''; }
 function aplicar(){
   estado.ini=document.getElementById('ini').value; estado.fim=document.getElementById('fim').value;
