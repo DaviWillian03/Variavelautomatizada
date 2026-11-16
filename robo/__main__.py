@@ -46,11 +46,14 @@ def main() -> int:
     term = Terminal()
     log.info("Robô da Variável iniciado.")
     try:
-        with sync_playwright() as pw, navegador_aberto(pw, cfg, lambda: pedir_login(term)) as ctx:
+        with sync_playwright() as pw, navegador_aberto(pw, cfg, lambda: pedir_login(term), log) as ctx:
             return _trabalhar(ctx, cfg, log, term)
     except (Sair, KeyboardInterrupt):
         log.warning("Encerrado por você.")
         return 2
+    except (RuntimeError, FileNotFoundError) as erro:
+        log.error("%s", erro)
+        return 1
 
 
 if __name__ == "__main__":

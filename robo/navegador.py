@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import time
+import urllib.request
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -50,55 +51,113 @@ def localizar_navegador(cfg: Config) -> str:
     )
 
 
-def _esperar_porta(arquivo: Path, processo: subprocess.Popen, segundos: float = 30) -> int:
+def _ler_porta(arquivo: Path) -> int | None:
+    try:
+        primeira = arquivo.read_text(encoding="utf-8", errors="ignore").splitlines()[:1]
+    except OSError:
+        return None
+    return int(primeira[0]) if primeira and primeira[0].strip().isdigit() else None
+
+
+def _porta_responde(porta: int) -> bool:
+    abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # local, sem proxy
+    try:
+        with abridor.open(f"http://127.0.0.1:{porta}/json/version", timeout=2) as resposta:
+            return resposta.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+def _chrome_do_robo_aberto(arquivo: Path) -> int | None:
+    """Porta de um Chrome do robô que ficou aberto de uma execução anterior (se houver)."""
+    porta = _ler_porta(arquivo) if arquivo.exists() else None
+    return porta if porta and _porta_responde(porta) else None
+
+
+def _esperar_porta(
+    arquivo: Path, processo: subprocess.Popen, log: logging.Logger, segundos: float = 90
+) -> int:
     prazo = time.monotonic() + segundos
     while time.monotonic() < prazo:
-        if arquivo.exists():
-            primeira = arquivo.read_text(encoding="utf-8", errors="ignore").splitlines()[:1]
-            if primeira and primeira[0].strip().isdigit():
-                return int(primeira[0])
-        if processo.poll() is not None and not arquivo.exists():
-            break
-        time.sleep(0.2)
-    raise RuntimeError(
-        "O Chrome do robô não respondeu. Feche TODAS as janelas do Chrome que o robô abriu "
-        "antes e rode o executar.bat de novo."
+        porta = _ler_porta(arquivo) if arquivo.exists() else None
+        if porta and _porta_responde(porta):
+            return porta
+        time.sleep(0.5)
+    log.error(
+        "Chrome sem resposta: processo %s, arquivo de porta %s.",
+        "ainda rodando" if processo.poll() is None else f"encerrado (código {processo.returncode})",
+        "existe" if arquivo.exists() else "não existe",
     )
+    raise RuntimeError(
+        "O Chrome do robô não respondeu em 90 segundos. Feche todas as janelas do Chrome "
+        "que o robô abriu (ou reinicie o computador) e rode o executar.bat de novo. "
+        "Se continuar, mande o arquivo da pasta logs."
+    )
+
+
+def _encerrar(processo: subprocess.Popen) -> None:
+    if processo.poll() is not None:
+        return
+    if os.name == "nt":  # fecha o Chrome e todos os processos filhos dele
+        subprocess.run(
+            ["taskkill", "/PID", str(processo.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        processo.terminate()
+    try:
+        processo.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        processo.kill()
 
 
 @contextmanager
 def navegador_aberto(
-    pw: Playwright, cfg: Config, antes_de_conectar: Callable[[], object] | None = None
+    pw: Playwright,
+    cfg: Config,
+    antes_de_conectar: Callable[[], object] | None = None,
+    log: logging.Logger | None = None,
 ) -> Iterator[BrowserContext]:
-    """Abre um Chrome NORMAL (sem modo automação) e só depois o robô se conecta a ele.
+    """Abre um Chrome comum e só depois o robô se conecta a ele.
 
     O robô só se conecta DEPOIS que você termina o login (`antes_de_conectar`), então
     durante o login, o "Não sou um robô" e o Authenticator nada é controlado pelo robô.
     O Chrome usa um perfil próprio (`perfil-navegador/`), separado do seu Chrome do dia a dia.
+    Se um Chrome do robô ficou aberto de uma execução anterior, ele é reaproveitado.
     """
+    log = log or logging.getLogger("robo")
     cfg.pasta_perfil.mkdir(parents=True, exist_ok=True)
     arquivo_porta = cfg.pasta_perfil / "DevToolsActivePort"
-    arquivo_porta.unlink(missing_ok=True)
 
-    argumentos = [
-        localizar_navegador(cfg),
-        f"--user-data-dir={cfg.pasta_perfil}",
-        "--remote-debugging-port=0",
-        "--remote-debugging-address=127.0.0.1",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--start-maximized",
-    ]
-    if cfg.headless:
-        argumentos.append("--headless=new")
-    if os.name != "nt" and os.geteuid() == 0:
-        argumentos.append("--no-sandbox")  # só no contêiner de testes (root no Linux)
-    argumentos.append(cfg.url_sistema)
+    processo: subprocess.Popen | None = None
+    if porta := _chrome_do_robo_aberto(arquivo_porta):
+        log.info("Reaproveitando o Chrome do robô que já estava aberto.")
+    else:
+        arquivo_porta.unlink(missing_ok=True)
+        argumentos = [
+            localizar_navegador(cfg),
+            f"--user-data-dir={cfg.pasta_perfil}",
+            "--remote-debugging-port=0",
+            "--remote-debugging-address=127.0.0.1",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--start-maximized",
+        ]
+        if cfg.headless:
+            argumentos.append("--headless=new")
+        if os.name != "nt" and os.geteuid() == 0:
+            argumentos.append("--no-sandbox")  # só no contêiner de testes (root no Linux)
+        argumentos.append(cfg.url_sistema)
+        log.info("Abrindo o Chrome: %s", argumentos[0])
+        processo = subprocess.Popen(
+            argumentos, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
 
-    processo = subprocess.Popen(argumentos, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     navegador = None
     try:
-        porta = _esperar_porta(arquivo_porta, processo)
+        if processo is not None:
+            porta = _esperar_porta(arquivo_porta, processo, log)
         if antes_de_conectar is not None:
             antes_de_conectar()
         navegador = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{porta}")
@@ -107,15 +166,16 @@ def navegador_aberto(
         yield contexto
     finally:
         if navegador is not None:
+            try:  # fecha o Chrome do jeito normal (sem aviso de "não foi fechado corretamente")
+                navegador.new_browser_cdp_session().send("Browser.close")
+            except Exception:
+                pass
             try:
                 navegador.close()
             except Exception:
                 pass
-        processo.terminate()
-        try:
-            processo.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            processo.kill()
+        if processo is not None:
+            _encerrar(processo)
 
 
 def _pronta(page: Page, host: str) -> bool:

@@ -6,7 +6,7 @@ if not exist .venv (
   echo Preparando o robo pela primeira vez...
   py -3 -m venv .venv || python -m venv .venv
 )
-.venv\Scripts\python -m pip install -q -r requirements.txt
+.venv\Scripts\python -m pip install -q --disable-pip-version-check -r requirements.txt
 if not exist .env copy .env.example .env >nul
 .venv\Scripts\python -m robo
 echo.

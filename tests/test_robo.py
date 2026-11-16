@@ -164,6 +164,13 @@ def test_pessoa_pode_sair(contexto, cfg):
     assert pagina_do_sistema(contexto, cfg.host_sistema) is None
 
 
+def test_reaproveita_chrome_do_robo_que_ficou_aberto(cfg):
+    with sync_playwright() as pw, navegador_aberto(pw, cfg) as primeiro:
+        primeiro.pages[0].wait_for_url("**/login.html")
+        with navegador_aberto(pw, cfg) as segundo:  # 2ª execução com o Chrome ainda aberto
+            assert any(p.url.endswith("/login.html") for p in segundo.pages)
+
+
 # ---------- fluxo completo no site falso ----------
 
 
