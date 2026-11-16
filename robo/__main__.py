@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 
 from .config import carregar_config
 from .interacao import Sair, Terminal
-from .navegador import abrir_navegador, aguardar_sistema, capturar_tela
+from .navegador import aguardar_sistema, capturar_tela, navegador_aberto
 from .registro import configurar_log
 from .tarefas import executar_tarefas
 
@@ -19,8 +19,7 @@ def main() -> int:
     term = Terminal()
     log.info("Robô da Variável iniciado.")
 
-    with sync_playwright() as pw:
-        contexto = abrir_navegador(pw, cfg)
+    with sync_playwright() as pw, navegador_aberto(pw, cfg) as contexto:
         page = None
         try:
             page = aguardar_sistema(contexto, cfg, log, term)
@@ -42,7 +41,6 @@ def main() -> int:
                     input("\nAperte Enter para fechar o Chrome do robô: ")
                 except (EOFError, KeyboardInterrupt):
                     pass
-            contexto.close()
 
     log.info("Robô terminou.")
     return 0

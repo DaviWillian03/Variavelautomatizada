@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright
 
 from robo.config import carregar_config
 from robo.interacao import Sair, Terminal, interpretar_selecao, periodo_sugerido
-from robo.navegador import abrir_navegador, aguardar_sistema, pagina_do_sistema
+from robo.navegador import aguardar_sistema, navegador_aberto, pagina_do_sistema
 from robo.planilha import ler_planilha, pasta_do_supervisor
 from robo.tarefas import executar_tarefas
 
@@ -90,9 +90,8 @@ def cfg(servidor, tmp_path, monkeypatch, planilha):
 @pytest.fixture
 def contexto(cfg):
     with sync_playwright() as pw:
-        ctx = abrir_navegador(pw, cfg)
-        yield ctx
-        ctx.close()
+        with navegador_aberto(pw, cfg) as ctx:
+            yield ctx
 
 
 # ---------- planilha e perguntas ----------
@@ -140,7 +139,8 @@ def test_navegador_invalido(monkeypatch, tmp_path):
 
 
 def test_espera_pessoa_abrir_o_sistema(contexto, cfg):
-    page = contexto.pages[0] if contexto.pages else contexto.new_page()
+    page = contexto.pages[0]
+    page.wait_for_url("**/login.html")
 
     def pessoa(_pergunta: str) -> str:
         if pessoa.vezes == 1:  # na 2ª vez já entrou
