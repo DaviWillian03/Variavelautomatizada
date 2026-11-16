@@ -15,7 +15,7 @@ from playwright.sync_api import sync_playwright
 
 from robo.config import carregar_config
 from robo.interacao import Sair, Terminal, interpretar_selecao, periodo_sugerido
-from robo.navegador import aguardar_sistema, navegador_aberto, pagina_do_sistema
+from robo.navegador import abrir_connect_merchan, navegador_aberto, pagina_do_sistema
 from robo.planilha import ler_planilha, pasta_do_supervisor
 from robo.tarefas import executar_tarefas
 
@@ -73,7 +73,7 @@ def planilha(tmp_path) -> Path:
 @pytest.fixture
 def cfg(servidor, tmp_path, monkeypatch, planilha):
     monkeypatch.setenv("URL_SISTEMA", f"{servidor}/login.html")
-    monkeypatch.setenv("HOST_SISTEMA", "127.0.0.1")
+    monkeypatch.setenv("HOST_SISTEMA", "localhost")  # portal em 127.0.0.1
     monkeypatch.setenv("NAVEGADOR", "chromium")
     monkeypatch.setenv("HEADLESS", "1")
     monkeypatch.setenv("TIMEOUT_MS", "8000")
@@ -138,26 +138,29 @@ def test_navegador_invalido(monkeypatch, tmp_path):
 # ---------- navegador ----------
 
 
-def test_espera_pessoa_abrir_o_sistema(contexto, cfg):
+def test_abre_connect_merchan_a_partir_do_portal(contexto, cfg):
     page = contexto.pages[0]
     page.wait_for_url("**/login.html")
 
     def pessoa(_pergunta: str) -> str:
-        if pessoa.vezes == 1:  # na 2ª vez já entrou
-            page.click("#entrar")
-            page.wait_for_url("**/inicio.html")
+        # 1ª pergunta: ainda na tela de login → a pessoa termina o login agora
+        page.click("#entrar")
+        page.wait_for_url("**/portal.html")
         pessoa.vezes += 1
         return ""
 
     pessoa.vezes = 0
-    achada = aguardar_sistema(contexto, cfg, LOG, Terminal(pessoa, lambda _m: None))
-    assert achada.url.endswith("/inicio.html")
-    assert pessoa.vezes == 2
+    connect = abrir_connect_merchan(contexto, cfg, LOG, Terminal(pessoa, lambda _m: None))
+    assert connect.url.startswith("http://localhost:") and "/pesquisas" in connect.url
+    assert pessoa.vezes == 1
+    # o robô abriu a nova aba sozinho clicando em "Connect Merchan" no portal
+    assert len(contexto.pages) == 2
 
 
 def test_pessoa_pode_sair(contexto, cfg):
+    contexto.pages[0].wait_for_url("**/login.html")
     with pytest.raises(Sair):
-        aguardar_sistema(contexto, cfg, LOG, Terminal(lambda _m: "sair", lambda _m: None))
+        abrir_connect_merchan(contexto, cfg, LOG, Terminal(lambda _m: "sair", lambda _m: None))
     assert pagina_do_sistema(contexto, cfg.host_sistema) is None
 
 

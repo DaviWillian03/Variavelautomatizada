@@ -6,10 +6,12 @@ supervisor, na Área de Trabalho.
 
 ## O que ele faz
 
-1. Abre o **Chrome** numa janela própria, na tela de login do Broker 3.0.
-2. **Você** faz o login (usuário, senha e Microsoft Authenticator) e abre o Connect Merchan.
-   O robô **nunca** digita senha nem mexe no MFA.
-3. Você aperta **Enter** no terminal do robô e responde:
+1. Abre o **Google Chrome** (perfil próprio do robô) na tela de login do Broker 3.0.
+2. **Você** faz o login: usuário, senha, “Não sou um robô” e Microsoft Authenticator.
+   Durante o login o robô **ainda não está conectado** ao Chrome — ele só espera.
+   O robô **nunca** digita senha, nem resolve captcha, nem mexe no MFA.
+3. Já na tela do portal, você aperta **Enter**. A primeira tarefa do robô é clicar para abrir
+   o **Connect Merchan**. Depois ele pergunta:
    - **período** (sugere a última quinzena fechada, ex.: 01/11/2026 a 15/11/2026);
    - **pasta** na Área de Trabalho (sugere `Variavel <Mês>`);
    - **quem puxar**: Enter = todos, `EMI` / `FLA` / `RUA` = de um supervisor, ou números (`1,4,10-15`).

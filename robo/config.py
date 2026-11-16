@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -21,6 +22,7 @@ SELETOR_RELATORIOS_PADRAO = (
 class Config:
     url_sistema: str
     host_sistema: str
+    host_portal: str
     navegador: str
     caminho_navegador: str | None
     headless: bool
@@ -52,9 +54,11 @@ def carregar_config(arquivo_env: Path | None = None) -> Config:
         return valor if valor.is_absolute() else RAIZ / valor
 
     area = os.getenv("PASTA_AREA_TRABALHO")
+    url_sistema = os.getenv("URL_SISTEMA", "https://broker3.flagcloud.com.br/login").strip()
     return Config(
-        url_sistema=os.getenv("URL_SISTEMA", "https://broker3.flagcloud.com.br/login").strip(),
+        url_sistema=url_sistema,
         host_sistema=os.getenv("HOST_SISTEMA", "connectmerchan.flagcloud.com.br").strip().lower(),
+        host_portal=(urlparse(url_sistema).hostname or "").lower(),
         navegador=navegador,
         caminho_navegador=os.getenv("CAMINHO_NAVEGADOR") or None,
         headless=_booleano(os.getenv("HEADLESS")),
