@@ -9,16 +9,18 @@ from playwright.sync_api import BrowserContext, sync_playwright
 
 from .config import Config, carregar_config
 from .interacao import Sair, Terminal
-from .navegador import abrir_connect_merchan, capturar_tela, navegador_aberto, pedir_login
+from .navegador import abrir_connect_merchan, capturar_tela, esperar_login, navegador_aberto
 from .registro import configurar_log
-from .tarefas import executar_tarefas
+from .tarefas import Plano, executar, preparar
 
 
-def _trabalhar(contexto: BrowserContext, cfg: Config, log: logging.Logger, term: Terminal) -> int:
+def _trabalhar(
+    contexto: BrowserContext, cfg: Config, log: logging.Logger, term: Terminal, plano: Plano
+) -> int:
     page = None
     try:
         page = abrir_connect_merchan(contexto, cfg, log, term)
-        executar_tarefas(page, cfg, log, term)
+        executar(page, cfg, log, term, plano)
     except Sair:
         log.warning("Encerrado por você.")
         return 2
@@ -46,12 +48,17 @@ def main() -> int:
     term = Terminal()
     log.info("Robô da Variável iniciado.")
     try:
-        with sync_playwright() as pw, navegador_aberto(pw, cfg, lambda: pedir_login(term), log) as ctx:
-            return _trabalhar(ctx, cfg, log, term)
+        plano = preparar(cfg, log, term)
+        if plano is None:
+            return 2
+        with sync_playwright() as pw, navegador_aberto(
+            pw, cfg, lambda porta: esperar_login(porta, cfg, log), log
+        ) as ctx:
+            return _trabalhar(ctx, cfg, log, term, plano)
     except (Sair, KeyboardInterrupt):
         log.warning("Encerrado por você.")
         return 2
-    except (RuntimeError, FileNotFoundError) as erro:
+    except (RuntimeError, FileNotFoundError, ValueError) as erro:
         log.error("%s", erro)
         return 1
 

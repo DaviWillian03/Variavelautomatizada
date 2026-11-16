@@ -7,6 +7,7 @@ estiver válida, ele já começa logado.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -96,35 +97,43 @@ def _esperar_porta(
 
 
 def _encerrar(processo: subprocess.Popen) -> None:
+    """Fecha o Chrome que o robô abriu: primeiro como no X da janela, depois à força."""
     if processo.poll() is not None:
         return
-    if os.name == "nt":  # fecha o Chrome e todos os processos filhos dele
-        subprocess.run(
-            ["taskkill", "/PID", str(processo.pid), "/T", "/F"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+    if os.name == "nt":
+        for forca in ([], ["/F"]):
+            subprocess.run(
+                ["taskkill", "/PID", str(processo.pid), "/T", *forca],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                processo.wait(timeout=8)
+                return
+            except subprocess.TimeoutExpired:
+                continue
     else:
         processo.terminate()
-    try:
-        processo.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        processo.kill()
+        try:
+            processo.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            processo.kill()
 
 
 @contextmanager
 def navegador_aberto(
     pw: Playwright,
     cfg: Config,
-    antes_de_conectar: Callable[[], object] | None = None,
+    antes_de_conectar: Callable[[int], object] | None = None,
     log: logging.Logger | None = None,
 ) -> Iterator[BrowserContext]:
     """Abre um Chrome comum e só depois o robô se conecta a ele.
 
-    O robô só se conecta DEPOIS que você termina o login (`antes_de_conectar`), então
+    O robô só se conecta DEPOIS que o login termina (`antes_de_conectar`), então
     durante o login, o "Não sou um robô" e o Authenticator nada é controlado pelo robô.
     O Chrome usa um perfil próprio (`perfil-navegador/`), separado do seu Chrome do dia a dia.
-    Se um Chrome do robô ficou aberto de uma execução anterior, ele é reaproveitado.
+    Se um Chrome do robô ficou aberto de uma execução anterior, ele é reaproveitado
+    (e continua aberto no fim). O Chrome que o robô abriu é fechado no fim.
     """
     log = log or logging.getLogger("robo")
     cfg.pasta_perfil.mkdir(parents=True, exist_ok=True)
@@ -159,19 +168,15 @@ def navegador_aberto(
         if processo is not None:
             porta = _esperar_porta(arquivo_porta, processo, log)
         if antes_de_conectar is not None:
-            antes_de_conectar()
+            antes_de_conectar(porta)
         navegador = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{porta}")
         contexto = navegador.contexts[0]
         contexto.set_default_timeout(cfg.timeout_ms)
         yield contexto
     finally:
         if navegador is not None:
-            try:  # fecha o Chrome do jeito normal (sem aviso de "não foi fechado corretamente")
-                navegador.new_browser_cdp_session().send("Browser.close")
-            except Exception:
-                pass
             try:
-                navegador.close()
+                navegador.close()  # só desconecta o robô
             except Exception:
                 pass
         if processo is not None:
@@ -193,6 +198,38 @@ def pagina_do_sistema(contexto: BrowserContext, host: str) -> Page | None:
 def pagina_do_portal(contexto: BrowserContext, host: str) -> Page | None:
     """Aba do portal Broker já depois do login (fora da tela /login)."""
     return next((p for p in reversed(contexto.pages) if _pronta(p, host)), None)
+
+
+def _abas(porta: int) -> list[str]:
+    """Endereços das abas abertas, lidos sem o robô controlar o Chrome."""
+    abridor = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with abridor.open(f"http://127.0.0.1:{porta}/json/list", timeout=3) as resposta:
+            return [a.get("url", "") for a in json.load(resposta) if a.get("type") == "page"]
+    except (OSError, ValueError):
+        return []
+
+
+def _logado(url: str, cfg: Config) -> bool:
+    partes = urlparse(url)
+    caminho = partes.path.lower()
+    return partes.hostname in (cfg.host_portal, cfg.host_sistema) and "login" not in caminho
+
+
+def esperar_login(porta: int, cfg: Config, log: logging.Logger, minutos: float = 20) -> None:
+    """Espera você terminar o login (portal fora da tela /login) — sem precisar apertar Enter."""
+    log.info(
+        "Faça o login no Chrome (usuário, senha, 'Não sou um robô' e Authenticator). "
+        "O robô ainda NÃO está controlando o Chrome; ele começa sozinho quando o portal abrir."
+    )
+    prazo = time.monotonic() + minutos * 60
+    while time.monotonic() < prazo:
+        if any(_logado(url, cfg) for url in _abas(porta)):
+            log.info("Login concluído. Começando…")
+            time.sleep(2)  # deixa a página do portal terminar de carregar
+            return
+        time.sleep(1.5)
+    raise RuntimeError(f"O login não foi concluído em {minutos:.0f} minutos. Rode de novo.")
 
 
 def pedir_login(term: "Terminal") -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+import os
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -60,12 +61,34 @@ def interpretar_selecao(texto: str, colaboradores: list[Colaborador]) -> list[Co
     return [colaboradores[i] for i in dict.fromkeys(escolhidos)]
 
 
+def trazer_janela_para_frente() -> None:
+    """No Windows, traz a janela preta do robô para a frente (por cima do Chrome)."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        janela = ctypes.windll.kernel32.GetConsoleWindow()
+        if janela:
+            ctypes.windll.user32.ShowWindow(janela, 9)  # restaura se minimizada
+            ctypes.windll.user32.SetForegroundWindow(janela)
+            ctypes.windll.user32.FlashWindow(janela, True)
+    except Exception:
+        pass
+
+
 class Terminal:
     def __init__(self, entrada: Callable[[str], str] = input, saida: Callable[[str], None] = print):
         self._entrada = entrada
         self.mostrar = saida
 
+    def chamar_atencao(self) -> None:
+        if self._entrada is input:
+            trazer_janela_para_frente()
+            print("\a", end="", flush=True)  # bipe
+
     def perguntar(self, mensagem: str, padrao: str | None = None) -> str:
+        self.chamar_atencao()
         sufixo = f" [{padrao}]" if padrao else ""
         resposta = self._entrada(f"{mensagem}{sufixo}: ").strip()
         if resposta.lower() == "sair":

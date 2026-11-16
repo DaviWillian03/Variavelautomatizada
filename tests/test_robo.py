@@ -15,9 +15,14 @@ from playwright.sync_api import sync_playwright
 
 from robo.config import carregar_config
 from robo.interacao import Sair, Terminal, interpretar_selecao, periodo_sugerido
-from robo.navegador import abrir_connect_merchan, navegador_aberto, pagina_do_sistema
+from robo.navegador import (
+    abrir_connect_merchan,
+    esperar_login,
+    navegador_aberto,
+    pagina_do_sistema,
+)
 from robo.planilha import ler_planilha, pasta_do_supervisor
-from robo.tarefas import executar_tarefas
+from robo.tarefas import executar, preparar
 
 SITE = Path(__file__).parent / "site_falso"
 CHROMIUM_NUVEM = Path("/opt/pw-browsers/chromium-1243/chrome-linux64/chrome")
@@ -164,6 +169,18 @@ def test_pessoa_pode_sair(contexto, cfg):
     assert pagina_do_sistema(contexto, cfg.host_sistema) is None
 
 
+def test_percebe_sozinho_quando_o_login_termina(cfg):
+    portas = []
+    with sync_playwright() as pw, navegador_aberto(pw, cfg, portas.append) as ctx:
+        page = ctx.pages[0]
+        page.wait_for_url("**/login.html")
+        with pytest.raises(RuntimeError):  # ainda na tela de login → não começa
+            esperar_login(portas[0], cfg, LOG, minutos=0.05)
+        page.click("#entrar")
+        page.wait_for_url("**/portal.html")
+        esperar_login(portas[0], cfg, LOG, minutos=0.5)  # agora começa, sem Enter
+
+
 def test_reaproveita_chrome_do_robo_que_ficou_aberto(cfg):
     with sync_playwright() as pw, navegador_aberto(pw, cfg) as primeiro:
         primeiro.pages[0].wait_for_url("**/login.html")
@@ -184,9 +201,9 @@ def test_fluxo_completo(contexto, cfg, servidor):
         "1,2,3",  # Ana (2 variáveis), Bruno (nenhuma), Carla (1)
         "s",  # começar
     )
-    resumo = executar_tarefas(
-        page, cfg, LOG, Terminal(respostas, lambda _m: None), hoje=date(2026, 11, 16)
-    )
+    term = Terminal(respostas, lambda _m: None)
+    plano = preparar(cfg, LOG, term, hoje=date(2026, 11, 16))  # perguntas antes do Chrome
+    resumo = executar(page, cfg, LOG, term, plano)
 
     base = cfg.pasta_area_trabalho / "Variavel Novembro"
     assert (base / "V EMI" / "Ana.pdf").read_bytes().startswith(b"%PDF")

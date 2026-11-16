@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
@@ -11,14 +12,20 @@ from playwright.sync_api import Page
 
 from .config import Config, area_de_trabalho
 from .connect import ColaboradorPulado, ConnectMerchan
-from .interacao import Terminal
+from .interacao import Periodo, Terminal
 from .navegador import capturar_tela
-from .planilha import ler_planilha
+from .planilha import Colaborador, ler_planilha
 
 
-def executar_tarefas(
-    page: Page, cfg: Config, log: logging.Logger, term: Terminal, hoje: date | None = None
-) -> list[tuple[str, str]]:
+@dataclass(frozen=True)
+class Plano:
+    periodo: Periodo
+    pasta_base: Path
+    colaboradores: list[Colaborador]
+
+
+def preparar(cfg: Config, log: logging.Logger, term: Terminal, hoje: date | None = None) -> Plano | None:
+    """Perguntas feitas ANTES de abrir o Chrome (período, pasta e quem puxar)."""
     colaboradores = ler_planilha(cfg.planilha)
     log.info("Planilha: %d colaboradores.", len(colaboradores))
 
@@ -30,16 +37,20 @@ def executar_tarefas(
         f"\nVou puxar {len(escolhidos)} colaborador(es), período "
         f"{periodo.texto(periodo.inicio)} a {periodo.texto(periodo.fim)}, salvando em {pasta_base}"
     )
-    if not term.confirmar("Começar?"):
+    if not term.confirmar("Abrir o Chrome e começar?"):
         log.info("Cancelado antes de começar.")
-        return []
+        return None
+    return Plano(periodo, pasta_base, escolhidos)
 
+
+def executar(page: Page, cfg: Config, log: logging.Logger, term: Terminal, plano: Plano) -> list[tuple[str, str]]:
     robo = ConnectMerchan(page, cfg, log, term)
     resumo: list[tuple[str, str]] = []
-    for n, colab in enumerate(escolhidos, 1):
-        log.info("[%d/%d] %s (%s)", n, len(escolhidos), colab.rotulo, colab.pasta)
+    total = len(plano.colaboradores)
+    for n, colab in enumerate(plano.colaboradores, 1):
+        log.info("[%d/%d] %s (%s)", n, total, colab.rotulo, colab.pasta)
         try:
-            situacao = robo.processar(colab, periodo, pasta_base)
+            situacao = robo.processar(colab, plano.periodo, plano.pasta_base)
         except ColaboradorPulado as passo:
             situacao = f"pulado por você ({passo})"
         except (PlaywrightError, TimeoutError) as erro:
@@ -53,6 +64,7 @@ def executar_tarefas(
         resumo.append((colab.rotulo, situacao))
 
     _gravar_resumo(cfg, resumo, log)
+    term.chamar_atencao()
     return resumo
 
 
