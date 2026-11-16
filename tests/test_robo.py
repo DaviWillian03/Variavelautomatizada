@@ -191,9 +191,23 @@ def test_reaproveita_chrome_do_robo_que_ficou_aberto(cfg):
 # ---------- fluxo completo no site falso ----------
 
 
-def test_fluxo_completo(contexto, cfg, servidor):
+CENARIOS = {
+    "padrao": "",
+    "painel_nao_abre_sozinho_e_demora": "?painel=manual&atraso=7000",
+    "pdf_abre_em_aba": "?modo=aba",
+    "item_aparece_so_quando_pronto": "?lista=tarde&atraso=4000",
+}
+
+
+@pytest.mark.parametrize("cenario", CENARIOS)
+def test_fluxo_completo(contexto, cfg, servidor, cenario):
+    # um arquivo com o mesmo nome já existe: não pode ser apagado
+    existente = cfg.pasta_area_trabalho / "Variavel Novembro" / "V RUA" / "Carla Ficticia.pdf"
+    existente.parent.mkdir(parents=True)
+    existente.write_bytes(b"arquivo antigo")
+
     page = contexto.new_page()
-    page.goto(f"{servidor}/pesquisas/")
+    page.goto(f"{servidor}/pesquisas/{CENARIOS[cenario]}")
     respostas = roteiro(
         "",  # data início sugerida (01/11/2026)
         "",  # data fim sugerida (15/11/2026)
@@ -207,7 +221,8 @@ def test_fluxo_completo(contexto, cfg, servidor):
 
     base = cfg.pasta_area_trabalho / "Variavel Novembro"
     assert (base / "V EMI" / "Ana.pdf").read_bytes().startswith(b"%PDF")
-    assert (base / "V RUA" / "Carla Ficticia.pdf").exists()
+    assert existente.read_bytes() == b"arquivo antigo"  # não sobrescreveu
+    assert (base / "V RUA" / "Carla Ficticia (2).pdf").read_bytes().startswith(b"%PDF")
     assert not (base / "V EMI" / "Bruno.pdf").exists()
 
     situacoes = dict(resumo)
@@ -230,6 +245,8 @@ def test_fluxo_completo(contexto, cfg, servidor):
         "1003 - Carla Ficticia Dias",
     ]
     assert list(cfg.pasta_saida.glob("*_resumo.txt"))
+    assert not list(cfg.pasta_saida.glob("*_ajuda.png"))  # tudo automático, sem pedir ajuda
+    # baixou os cadernos novos (900, 901), nunca o antigo (#ID 100)
 
 
 def test_textos_com_ou_sem_acento():

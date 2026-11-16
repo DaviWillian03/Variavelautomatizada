@@ -125,15 +125,27 @@ function abrirPP(){ // menu de opções no fim da página (como os menus suspens
   document.body.appendChild(ul); }
 function togglePainel(){ document.getElementById('painel').classList.toggle('oculto'); }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.getElementById('painel').classList.add('oculto'); });
+// Modos de teste (na URL): painel=manual (não abre sozinho), atraso=ms (tempo para ficar pronto),
+// modo=aba (o PDF abre numa aba nova em vez de baixar), lista=tarde (o item só aparece quando pronto)
+const PARAMS = new URLSearchParams(location.search);
 function exportar(){
   document.getElementById('menu').classList.add('oculto');
   window.exportados.push([...document.querySelectorAll('#corpo input:checked')].map(x=>+x.dataset.id));
   const id = proximo++;
-  document.getElementById('painel').classList.remove('oculto');
-  setTimeout(()=>{ const d=document.createElement('div'); d.className='item';
-    d.innerHTML=`<div><span>#ID ${id} - Caderno Pesquisas Pdf</span><small>Gerado agora</small></div>`+
-      `<div><button title="Concluído">✓</button><a href="/caderno.pdf" download="relatorio_${id}.pdf">☁</a></div>`;
-    document.getElementById('itens').prepend(d); }, 1000);
+  if (PARAMS.get('painel') !== 'manual') document.getElementById('painel').classList.remove('oculto');
+  const atraso = +(PARAMS.get('atraso') || 1000);
+  const link = PARAMS.get('modo') === 'aba'
+    ? `<a href="/caderno.pdf" target="_blank">☁</a>`
+    : `<a href="/caderno.pdf" download="relatorio_${id}.pdf">☁</a>`;
+  const d = document.createElement('div'); d.className = 'item';
+  d.innerHTML = `<div><span>#ID ${id} - Caderno Pesquisas Pdf</span><small>Processando…</small></div>` +
+                `<div><button title="Processando">⏳</button></div>`;
+  if (PARAMS.get('lista') !== 'tarde') document.getElementById('itens').prepend(d);
+  setTimeout(() => {
+    d.innerHTML = `<div><span>#ID ${id} - Caderno Pesquisas Pdf</span><small>Gerado agora</small></div>` +
+                  `<div><button title="Concluído">✓</button>${link}</div>`;
+    if (!d.isConnected) document.getElementById('itens').prepend(d);
+  }, atraso);
 }
 </script>
 </body></html>

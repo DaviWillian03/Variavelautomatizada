@@ -44,6 +44,16 @@ RE_CADERNO = re.compile(r"#\s*ID\s*(\d+)\s*-\s*Caderno", re.I)
 RE_VARIAVEL = re.compile(r"variavel", re.I)
 
 
+class PdfBaixado:
+    """PDF obtido de uma aba (quando o sistema abre o PDF em vez de baixar)."""
+
+    def __init__(self, conteudo: bytes):
+        self.conteudo = conteudo
+
+    def save_as(self, caminho) -> None:
+        Path(caminho).write_bytes(self.conteudo)
+
+
 class ColaboradorPulado(Exception):
     """Você escolheu pular o colaborador atual."""
 
@@ -64,6 +74,7 @@ class ConnectMerchan:
         self.cfg = cfg
         self.log = log
         self.term = term
+        self.baixados: set[int] = set()  # IDs de relatório já baixados nesta rodada
         page.set_default_timeout(min(cfg.timeout_ms, 12_000))
 
     # ---------- utilitários ----------
@@ -358,18 +369,15 @@ class ConnectMerchan:
 
         self._passo("clicar em Exportar → 7. Export do Caderno (PDF)", acao)
 
-    def _tentar_baixar(self, antes: set[int] | None):
+    def _ids_no_painel(self) -> set[int] | None:
         if not self.abrir_relatorios():
             return None
-        ids = sorted(
-            {int(m[1]) for t in self.page.get_by_text(RE_CADERNO).all_inner_texts()
-             if (m := RE_CADERNO.search(t))},
-            reverse=True,
-        )
-        novos = [i for i in ids if antes is None or i not in antes]
-        if not novos:
-            return None
-        item = self.page.get_by_text(re.compile(rf"#\s*ID\s*{novos[0]}\b")).first
+        textos = self.page.get_by_text(RE_CADERNO).all_inner_texts()
+        return {int(m[1]) for t in textos if (m := RE_CADERNO.search(t))}
+
+    def _clicar_baixar(self, id_relatorio: int):
+        """Clica no ícone de baixar do relatório. Aceita download direto ou PDF aberto em aba nova."""
+        item = self.page.get_by_text(re.compile(rf"#\s*ID\s*{id_relatorio}\b")).first
         # a "linha" do relatório: o maior bloco que contém só este #ID (com os ícones dele)
         linha = item.locator(
             "xpath=ancestor-or-self::*[count(.//text()[contains(., '#ID')]) = 1][last()]"
@@ -380,24 +388,79 @@ class ConnectMerchan:
         )
         if not baixar.count():  # sem nome: o último ícone da linha (a nuvem de download)
             baixar = linha.locator("a, button, [role='button'], svg")
+        if not baixar.count():
+            return None
+
+        contexto = self.page.context
+        downloads: list = []
+        abas: list[Page] = []
+
+        def guardar(download) -> None:
+            downloads.append(download)
+
+        def nova_aba(aba: Page) -> None:
+            abas.append(aba)
+            aba.on("download", guardar)
+
+        self.page.on("download", guardar)
+        contexto.on("page", nova_aba)
         try:
-            with self.page.expect_download(timeout=8000) as espera:
-                baixar.last.click()
-            self.log.info("Baixando o relatório #ID %s.", novos[0])
-            return espera.value
-        except PlaywrightTimeout:
-            return None  # ainda está sendo gerado
+            baixar.last.click()
+            prazo = time.monotonic() + 8
+            while time.monotonic() < prazo and not downloads:
+                if abas and abas[0].url not in ("", "about:blank"):
+                    break
+                self.page.wait_for_timeout(250)
+        finally:
+            self.page.remove_listener("download", guardar)
+            contexto.remove_listener("page", nova_aba)
+
+        if downloads:
+            for aba in abas:
+                aba.close()
+            return downloads[0]
+        if abas:  # o PDF abriu numa aba: busca o arquivo com a mesma sessão e fecha a aba
+            aba = abas[0]
+            try:
+                aba.wait_for_load_state("domcontentloaded", timeout=10_000)
+            except PlaywrightError:
+                pass
+            if downloads:  # a aba nova disparou o download
+                aba.close()
+                return downloads[0]
+            resposta = contexto.request.get(aba.url)
+            conteudo = resposta.body() if resposta.ok else b""
+            aba.close()
+            self.page.bring_to_front()
+            if conteudo.startswith(b"%PDF"):
+                return PdfBaixado(conteudo)
+        return None  # ainda está sendo gerado
 
     def baixar_caderno(self, antes: set[int] | None, destino: Path) -> Path:
-        prazo = time.monotonic() + self.cfg.timeout_relatorio_s
+        """Baixa o caderno NOVO (nunca um já existente ou já baixado nesta rodada)."""
+        inicio = time.monotonic()
+        prazo = inicio + self.cfg.timeout_relatorio_s
+        base = antes
         download = None
+        id_baixado = None
         while download is None and time.monotonic() < prazo:
             try:
-                download = self._tentar_baixar(antes)
+                ids = self._ids_no_painel()
+                if ids is not None:
+                    if base is None:  # não deu para ver o painel antes: 1ª olhada depois
+                        base = set(ids)
+                    novos = [i for i in ids if i not in base and i not in self.baixados]
+                    if not novos and antes is None and time.monotonic() - inicio > 20:
+                        # o novo já estava na 1ª olhada: é o maior que ainda não foi baixado
+                        maior_ja = max(self.baixados, default=0)
+                        novos = [i for i in ids if i > maior_ja and i not in self.baixados]
+                    if novos:
+                        id_baixado = max(novos)
+                        download = self._clicar_baixar(id_baixado)
             except PlaywrightError as erro:
                 self.log.debug("Ainda não deu para baixar: %s", erro)
             if download is None:
-                self.page.wait_for_timeout(4000)
+                self.page.wait_for_timeout(3000)
 
         if download is None:
             print_ = capturar_tela(self.page, self.cfg.pasta_saida, "ajuda")
@@ -407,9 +470,13 @@ class ConnectMerchan:
                 "  >> Faça você: no painel Relatórios (topo da tela), clique para baixar o "
                 "caderno NOVO. Estou esperando o download…"
             )
+            self.term.chamar_atencao()
             with self.page.expect_download(timeout=self.cfg.timeout_relatorio_s * 1000) as espera:
                 pass
             download = espera.value
+        else:
+            self.baixados.add(id_baixado)
+            self.log.info("Baixado o relatório #ID %s.", id_baixado)
 
         destino.parent.mkdir(parents=True, exist_ok=True)
         final = caminho_livre(destino)
