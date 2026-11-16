@@ -17,6 +17,9 @@ a cada 15 dias. Tudo em português brasileiro.
 - Dependências com versão exata em `requirements*.txt`.
 
 ## Convenções
-- Usar o logger `robo` (`robo/registro.py`), não `print`.
+- Usar o logger `robo` (`robo/registro.py`); só `Terminal` (`robo/interacao.py`) conversa com a pessoa.
 - Seletores preferidos: `get_by_role` / `get_by_label` / texto visível, não XPath frágil.
 - Em erro: print em `saida/*_erro.png` + traceback no log.
+- Planilha de colaboradores tem dados pessoais: nunca versionar (`*.xlsx` no .gitignore); testes usam nomes fictícios.
+- Passo que falhar no site real → `ConnectMerchan._passo` pede ajuda à pessoa (print + Enter/pular/sair), nunca trava.
+- Seletores do Connect Merchan vieram de um vídeo, não do HTML real: ajustar com prints `saida/*_ajuda.png`.

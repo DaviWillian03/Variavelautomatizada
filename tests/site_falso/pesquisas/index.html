@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><title>Connect Merchan (falso)</title>
+<style>
+  .oculto{display:none} .dlg{position:fixed;inset:40px;background:#fff;border:1px solid #999;padding:16px}
+  .lista{border:1px solid #ccc;padding:4px} #painel{position:fixed;right:0;top:0;width:320px;background:#fff;border:1px solid #333}
+</style>
+<body>
+<header>
+  <button id="sino" title="Relatórios" onclick="togglePainel()">🔔</button>
+</header>
+<div id="painel" class="oculto">
+  <h4>Relatórios</h4>
+  <button onclick="togglePainel()">×</button>
+  <div id="itens">
+    <div class="item"><span>#ID 100 - Caderno Pesquisas Pdf</span> <a href="/caderno.pdf" download="antigo.pdf">⬇</a></div>
+  </div>
+</div>
+
+<h1>Pesquisas</h1>
+<button onclick="abrirFiltros()">Todos Filtros</button>
+<div id="chips"></div>
+<div id="total"></div>
+<div id="carregando" class="oculto">Carregando pesquisas...</div>
+<h3>Todas as pesquisas</h3>
+<table><thead><tr><th></th><th>ID</th><th>Nome</th></tr></thead><tbody id="corpo"></tbody></table>
+<div><span id="pp" onclick="document.getElementById('ppl').classList.toggle('oculto')">10</span><span>Registros por página</span></div>
+<div id="ppl" class="oculto"><div onclick="porPagina(10)">10</div><div onclick="porPagina(50)">50</div><div onclick="porPagina(100)">100</div></div>
+<button onclick="document.getElementById('menu').classList.toggle('oculto')">Exportar</button>
+<div id="menu" class="oculto">
+  <div>1. Export Pesquisas (XLS)</div>
+  <div onclick="exportar()">7. Export do Caderno (PDF)</div>
+</div>
+
+<div id="dlg" class="dlg oculto">
+  <div>Selecione filtros</div>
+  <span onclick="limpar()">Limpar</span>
+  <div>Período de Criação</div><input placeholder="Data Início"><input placeholder="Data Fim">
+  <div>Período Começo das Respostas</div><input id="ini" placeholder="Data Início"><input id="fim" placeholder="Data Fim">
+  <div class="sel" data-campo="situacao" data-rotulo="Situação"><span>Situação</span></div>
+  <div class="sel" data-campo="tipo" data-rotulo="Tipo de formulário"><span>Tipo de formulário</span></div>
+  <div class="sel" data-campo="colaborador" data-rotulo="Colaborador"><span>Colaborador</span></div>
+  <button onclick="aplicar()">Aplicar</button>
+</div>
+
+<script>
+const OPCOES = {
+  situacao: ["Pendente","Recebida","Respondida"],
+  tipo: ["Pesquisa","Loja Perfeita"],
+  colaborador: ["1001 - Ana Teste Souza","1002 - Bruno Exemplo Lima","1003 - Carla Ficticia Dias"],
+};
+const DADOS = {
+  "1001": [...Array(10).keys()].map(i=>[300+i,"Antes E Depois"]).concat([[401,"Variavel Novembro 1/2"],[402,"Variável Novembro 1/2"]]),
+  "1002": [[500,"Antes E Depois"]],
+  "1003": [[600,"Variavel Novembro 1/2"]],
+};
+let estado = {}; let linhas = []; let pagina = 10; let proximo = 900;
+window.exportados = []; window.filtrosAplicados = [];
+
+document.querySelectorAll('.sel').forEach(sel => sel.querySelector('span').onclick = () => abrirLista(sel));
+function abrirLista(sel){
+  document.querySelectorAll('.lista').forEach(l=>l.remove());
+  const l = document.createElement('div'); l.className='lista';
+  const busca = document.createElement('input'); busca.placeholder='Pesquisar'; l.appendChild(busca);
+  const desenhar = () => { l.querySelectorAll('label').forEach(x=>x.remove());
+    OPCOES[sel.dataset.campo].filter(o=>o.toLowerCase().includes(busca.value.toLowerCase())).forEach(o=>{
+      const lb=document.createElement('label'); lb.textContent=o;
+      lb.onclick=()=>{estado[sel.dataset.campo]=o; sel.querySelector('span').textContent=o; l.remove();};
+      l.appendChild(lb);});
+  };
+  busca.oninput=desenhar; desenhar(); sel.appendChild(l); busca.focus();
+}
+function abrirFiltros(){ document.getElementById('dlg').classList.remove('oculto'); }
+function limpar(){ estado={}; document.querySelectorAll('.sel').forEach(s=>s.querySelector('span').textContent=s.dataset.rotulo);
+  document.getElementById('ini').value=''; document.getElementById('fim').value=''; }
+function aplicar(){
+  estado.ini=document.getElementById('ini').value; estado.fim=document.getElementById('fim').value;
+  window.filtrosAplicados.push({...estado});
+  document.getElementById('dlg').classList.add('oculto');
+  const c=document.getElementById('carregando'); c.classList.remove('oculto');
+  setTimeout(()=>{ c.classList.add('oculto');
+    const cod=(estado.colaborador||'').split(' - ')[0];
+    linhas = DADOS[cod]||[];
+    document.getElementById('chips').innerHTML = `<span>Data Início: ${estado.ini}</span> <span>Colaborador: ${estado.colaborador||''}</span>`;
+    document.getElementById('total').innerHTML = `<span>${linhas.length} Respondidas</span>`;
+    desenharTabela(); }, 400);
+}
+function desenharTabela(){
+  document.getElementById('corpo').innerHTML = linhas.slice(0,pagina).map(([id,nome])=>
+    `<tr><td><input type="checkbox" data-id="${id}"></td><td>${id}</td><td>${nome}</td></tr>`).join('');
+}
+function porPagina(n){ pagina=n; document.getElementById('pp').textContent=String(n);
+  document.getElementById('ppl').classList.add('oculto'); desenharTabela(); }
+function togglePainel(){ document.getElementById('painel').classList.toggle('oculto'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.getElementById('painel').classList.add('oculto'); });
+function exportar(){
+  document.getElementById('menu').classList.add('oculto');
+  window.exportados.push([...document.querySelectorAll('#corpo input:checked')].map(x=>+x.dataset.id));
+  const id = proximo++;
+  document.getElementById('painel').classList.remove('oculto');
+  setTimeout(()=>{ const d=document.createElement('div'); d.className='item';
+    d.innerHTML=`<span>#ID ${id} - Caderno Pesquisas Pdf</span> <a href="/caderno.pdf" download="relatorio_${id}.pdf">⬇</a>`;
+    document.getElementById('itens').prepend(d); }, 1000);
+}
+</script>
+</body></html>

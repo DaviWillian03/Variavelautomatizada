@@ -1,60 +1,68 @@
 # Variável Automatizada
 
-Robô de automação (Python + Playwright) para o sistema FlagCloud, usado a cada 15 dias.
+Robô (Python + Playwright) que baixa, a cada 15 dias, o **caderno PDF das pesquisas de variável**
+de cada promotor no **Connect Merchan** (portal Broker 3.0 / FlagCloud) e salva na pasta do
+supervisor, na Área de Trabalho.
 
-## Como funciona
+## O que ele faz
 
-1. O robô abre o **Microsoft Edge** numa janela própria, na tela de login.
-2. **Você** faz o login: usuário, senha e aprovação no Microsoft Authenticator.
-   O robô **nunca** digita senha nem aprova o MFA.
-3. Quando você estiver dentro do sistema, aperte **Enter** no terminal do robô.
-4. A partir daí o robô executa as tarefas e salva os resultados em `saida/`.
+1. Abre o **Chrome** numa janela própria, na tela de login do Broker 3.0.
+2. **Você** faz o login (usuário, senha e Microsoft Authenticator) e abre o Connect Merchan.
+   O robô **nunca** digita senha nem mexe no MFA.
+3. Você aperta **Enter** no terminal do robô e responde:
+   - **período** (sugere a última quinzena fechada, ex.: 01/11/2026 a 15/11/2026);
+   - **pasta** na Área de Trabalho (sugere `Variavel <Mês>`);
+   - **quem puxar**: Enter = todos, `EMI` / `FLA` / `RUA` = de um supervisor, ou números (`1,4,10-15`).
+4. Para cada colaborador, igual ao vídeo de referência:
+   Pesquisas → **Todos Filtros** → Período Começo das Respostas, Situação *Respondida*,
+   Tipo *Pesquisa*, Colaborador → **Aplicar** → 100 por página → marca **só** as pesquisas
+   com “Variavel” no nome → **Exportar → 7. Export do Caderno (PDF)** → baixa no painel
+   **Relatórios** → salva como `Área de Trabalho\<pasta>\V EMI|V FLA|V RUA\<PrimeiroNome>.pdf`.
+5. No fim mostra um **resumo** (salvos, sem pesquisa de variável, pulados, erros) e grava em `saida/`.
 
-> Situação atual: as tarefas **ainda não foram definidas**. Por enquanto o robô só salva
-> um print da tela inicial em `saida/` (para mapearmos os menus). Nada é alterado no sistema.
+Regras:
+- Colaborador **sem** pesquisa de variável no período: não exporta, aparece no resumo.
+- Mesmo primeiro nome na mesma pasta: usa nome + sobrenome (ex.: `Daniela Aparecida.pdf`).
+- Arquivo já existente **não é sobrescrito**: vira `Allan (2).pdf`.
+- **Trava de segurança**: só exporta se o filtro na tela estiver no colaborador certo.
+- Se o robô não achar algum botão, ele **não trava**: salva um print, pede para você fazer
+  aquele passo na janela e continua (ou você digita `pular` / `sair`).
 
 ## Primeira vez no Windows
 
-1. Instale o **Python 3.12 ou mais novo** em <https://www.python.org/downloads/>
-   (marque **“Add python.exe to PATH”** na instalação).
-2. Baixe este repositório (botão **Code → Download ZIP** no GitHub, ou `git clone`).
-3. Dê dois cliques em **`executar.bat`**.
-   Na primeira vez ele prepara tudo sozinho (pode levar alguns minutos).
+1. Instale o **Python 3.12+** em <https://www.python.org/downloads/>
+   (marque **“Add python.exe to PATH”**).
+2. Baixe este repositório (**Code → Download ZIP**) e extraia, por exemplo, em `Documentos\Robo`.
+3. Coloque a planilha de colaboradores nessa pasta com o nome **`colaboradores.xlsx`**
+   (colunas: `Cod. Colaborador`, `Nome`, `Usuario`, `Nome Superior`).
+4. Dê dois cliques em **`executar.bat`**.
 
-Nas próximas vezes, é só dar dois cliques em `executar.bat` de novo.
+O Chrome do robô usa um perfil separado (`perfil-navegador/`), então ele não mexe no seu Chrome
+normal. Trate essa pasta como senha: não compartilhe.
 
 ## Onde ficam as coisas
 
-| Pasta / arquivo      | O que é                                                          | Vai para o Git? |
-|----------------------|------------------------------------------------------------------|-----------------|
-| `perfil-navegador/`  | Cookies/sessão do navegador do robô (é como estar logado)        | **Não**         |
-| `saida/`             | Arquivos e prints gerados (inclui `*_erro.png` quando algo falha)| **Não**         |
-| `logs/`              | Registro de cada execução (`robo-AAAA-MM-DD.log`)                | **Não**         |
-| `.env`               | Configurações (URL, navegador) — **sem senha**                   | **Não**         |
-
-Trate `perfil-navegador/` como uma senha: não compartilhe essa pasta.
-
-## Configuração (`.env`)
-
-Criado automaticamente a partir de `.env.example`:
-
-- `URL_SISTEMA` — endereço da tela de login.
-- `NAVEGADOR` — `msedge` (padrão), `chrome` ou `chromium`.
-- `TIMEOUT_MS` — quanto tempo esperar cada elemento da tela (padrão 30000 = 30 s).
+| Pasta / arquivo      | O que é                                                    | Vai para o Git? |
+|----------------------|------------------------------------------------------------|-----------------|
+| `colaboradores.xlsx` | Lista de promotores e supervisores (dados pessoais)        | **Não**         |
+| `perfil-navegador/`  | Sessão do Chrome do robô                                   | **Não**         |
+| `saida/`             | Resumos e prints (`*_ajuda.png`, `*_erro.png`)             | **Não**         |
+| `logs/`              | Registro de cada execução                                  | **Não**         |
+| `.env`               | Configurações (sem senha)                                  | **Não**         |
 
 ## Para desenvolvedores
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt   # no Windows: .venv\Scripts\pip ...
+.venv/bin/pip install -r requirements-dev.txt   # Windows: .venv\Scripts\pip ...
 .venv/bin/python -m pytest
 ```
 
-Os testes usam um site falso local (`tests/site_falso/`) e nunca acessam o FlagCloud.
+Os testes usam um **Connect Merchan falso** (`tests/site_falso/pesquisas/`) e dados fictícios;
+nunca acessam o FlagCloud.
 
-Estrutura:
-
-- `robo/config.py` — lê o `.env`.
-- `robo/navegador.py` — abre o navegador, espera o login manual, tira prints.
-- `robo/tarefas.py` — **o que o robô faz dentro do sistema** (a preencher).
-- `robo/__main__.py` — junta tudo; em caso de erro salva print e log.
+- `robo/planilha.py` — lê a planilha, define pasta (`V EMI`…) e nome do arquivo.
+- `robo/interacao.py` — perguntas do terminal (período, pasta, quem puxar).
+- `robo/navegador.py` — abre o Chrome e espera o Connect Merchan aberto.
+- `robo/connect.py` — os cliques dentro do Connect Merchan (seletores tirados do vídeo).
+- `robo/tarefas.py` — roteiro: um colaborador por vez + resumo.

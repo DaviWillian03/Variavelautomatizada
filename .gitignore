@@ -1,8 +1,13 @@
-# Nunca versionar: segredos, sessão do navegador e resultados
+# Nunca versionar: segredos, sessão do navegador, dados pessoais e resultados
 .env
 perfil-navegador/
 saida/
 logs/
+*.xlsx
+*.xls
+*.csv
+*.pdf
+!tests/site_falso/*.pdf
 .venv/
 __pycache__/
 .pytest_cache/
