@@ -71,7 +71,9 @@ class ConnectMerchan:
     def _ajuda(self, descricao: str, erro: Exception) -> None:
         self.log.warning("Não consegui %s (%s).", descricao, str(erro).splitlines()[0])
         try:
-            self.log.warning("Print: %s", capturar_tela(self.page, self.cfg.pasta_saida, "ajuda"))
+            print_ = capturar_tela(self.page, self.cfg.pasta_saida, "ajuda")
+            self.log.warning("Print: %s", print_)
+            self._salvar_estrutura(print_.with_suffix(".html"))
         except PlaywrightError:
             pass
         resposta = self.term.perguntar(
@@ -80,6 +82,18 @@ class ConnectMerchan:
         )
         if resposta.lower() == "pular":
             raise ColaboradorPulado(descricao)
+
+    def _salvar_estrutura(self, arquivo: Path) -> None:
+        """Guarda o HTML da janela de filtros (ou do painel/lista visível) para ajustar o robô."""
+        try:
+            dialogo = self._dialogo()
+            alvo = dialogo if dialogo.count() and dialogo.first.is_visible() else None
+            html = alvo.first.evaluate("e => e.outerHTML") if alvo else None
+            if html:
+                arquivo.write_text(html, encoding="utf-8")
+                self.log.warning("Estrutura da tela salva em %s", arquivo)
+        except (PlaywrightError, OSError):
+            pass
 
     def _passo(self, descricao: str, acao):
         try:
@@ -134,7 +148,11 @@ class ConnectMerchan:
         campo = dialogo.get_by_text(rx(rotulo, inteiro=True)).locator("visible=true")
         if not campo.count():
             raise LookupError(f"não achei o campo '{rotulo}' na janela de filtros")
-        campo.first.click()
+        try:
+            campo.first.click(timeout=4000)
+        except PlaywrightTimeout:
+            # há uma camada por cima do texto (a caixa onde se digita): clica na posição dele
+            campo.first.click(force=True)
         self.page.wait_for_timeout(500)
         caixa = self.page.get_by_placeholder(rx("Pesquisar")).locator("visible=true")
         if caixa.count():
