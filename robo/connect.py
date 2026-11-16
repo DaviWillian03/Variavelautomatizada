@@ -87,7 +87,11 @@ class ConnectMerchan:
         """Guarda o HTML da janela de filtros (ou do painel/lista visível) para ajustar o robô."""
         try:
             dialogo = self._dialogo()
-            if dialogo.count() and dialogo.first.is_visible():
+            if self._painel_aberto():  # painel Relatórios (lista de #ID … Caderno)
+                alvo = self.page.get_by_text(rx("Relatorios", inteiro=True)).locator(
+                    "visible=true"
+                ).first.locator("xpath=ancestor::*[.//text()[contains(., '#ID')]][1]")
+            elif dialogo.count() and dialogo.first.is_visible():
                 alvo = dialogo.first
             else:  # lista de pesquisas + rodapé (Registros por página, Exportar)
                 alvo = self.page.get_by_text(rx("Todas as pesquisas")).first.locator(
@@ -342,7 +346,12 @@ class ConnectMerchan:
 
     def exportar_caderno(self) -> None:
         def acao():
-            self.page.get_by_role("button", name=re.compile(r"^\s*Exportar", re.I)).click()
+            # há mais de um "Exportar" na página: usa o visível que fica embaixo da lista
+            botoes = self.page.get_by_role("button", name=rx("Exportar")).locator("visible=true")
+            if not botoes.count():
+                raise LookupError("não achei o botão Exportar visível")
+            botoes.last.scroll_into_view_if_needed()
+            botoes.last.click()
             self._visivel(
                 self.page.get_by_text(rx("Export do Caderno (PDF)"))
             ).click()
@@ -361,10 +370,19 @@ class ConnectMerchan:
         if not novos:
             return None
         item = self.page.get_by_text(re.compile(rf"#\s*ID\s*{novos[0]}\b")).first
-        linha = item.locator("xpath=ancestor-or-self::*[.//a or .//button][1]")
+        # a "linha" do relatório: o maior bloco que contém só este #ID (com os ícones dele)
+        linha = item.locator(
+            "xpath=ancestor-or-self::*[count(.//text()[contains(., '#ID')]) = 1][last()]"
+        )
+        baixar = linha.locator(
+            "[title*='aixar' i], [aria-label*='aixar' i], [title*='ownload' i], "
+            "[aria-label*='ownload' i], a[download]"
+        )
+        if not baixar.count():  # sem nome: o último ícone da linha (a nuvem de download)
+            baixar = linha.locator("a, button, [role='button'], svg")
         try:
             with self.page.expect_download(timeout=8000) as espera:
-                linha.locator("a, button").last.click()
+                baixar.last.click()
             self.log.info("Baixando o relatório #ID %s.", novos[0])
             return espera.value
         except PlaywrightTimeout:
@@ -382,8 +400,9 @@ class ConnectMerchan:
                 self.page.wait_for_timeout(4000)
 
         if download is None:
-            self.log.warning("Não consegui baixar sozinho. Print: %s",
-                             capturar_tela(self.page, self.cfg.pasta_saida, "ajuda"))
+            print_ = capturar_tela(self.page, self.cfg.pasta_saida, "ajuda")
+            self.log.warning("Não consegui baixar sozinho. Print: %s", print_)
+            self._salvar_estrutura(print_.with_suffix(".html"))
             self.term.mostrar(
                 "  >> Faça você: no painel Relatórios (topo da tela), clique para baixar o "
                 "caderno NOVO. Estou esperando o download…"

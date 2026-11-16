@@ -12,11 +12,13 @@
   <h4>Relatórios</h4>
   <button onclick="togglePainel()">×</button>
   <div id="itens">
-    <div class="item"><span>#ID 100 - Caderno Pesquisas Pdf</span> <a href="/caderno.pdf" download="antigo.pdf">⬇</a></div>
+    <div class="item"><div><span>#ID 100 - Caderno Pesquisas Pdf</span><small>Gerado em 01/11</small></div>
+      <div><button title="Concluído">✓</button><a href="/caderno.pdf" download="antigo.pdf">☁</a></div></div>
   </div>
 </div>
 
 <h1>Pesquisas</h1>
+<button style="display:none">Exportar</button>
 <div>Filtro rápido: <span>Respondida</span> <span>Pesquisa</span></div>
 <button onclick="abrirFiltros()">Todos Filtros</button>
 <div id="chips"></div>
@@ -129,7 +131,8 @@ function exportar(){
   const id = proximo++;
   document.getElementById('painel').classList.remove('oculto');
   setTimeout(()=>{ const d=document.createElement('div'); d.className='item';
-    d.innerHTML=`<span>#ID ${id} - Caderno Pesquisas Pdf</span> <a href="/caderno.pdf" download="relatorio_${id}.pdf">⬇</a>`;
+    d.innerHTML=`<div><span>#ID ${id} - Caderno Pesquisas Pdf</span><small>Gerado agora</small></div>`+
+      `<div><button title="Concluído">✓</button><a href="/caderno.pdf" download="relatorio_${id}.pdf">☁</a></div>`;
     document.getElementById('itens').prepend(d); }, 1000);
 }
 </script>
