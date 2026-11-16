@@ -17,6 +17,7 @@
 </div>
 
 <h1>Pesquisas</h1>
+<div>Filtro rápido: <span>Respondida</span> <span>Pesquisa</span></div>
 <button onclick="abrirFiltros()">Todos Filtros</button>
 <div id="chips"></div>
 <div id="total"></div>
@@ -57,14 +58,17 @@ let estado = {}; let linhas = []; let pagina = 10; let proximo = 900;
 window.exportados = []; window.filtrosAplicados = [];
 
 document.querySelectorAll('.sel').forEach(sel => sel.querySelector('span').onclick = () => abrirLista(sel));
+document.addEventListener('click', e => { if (!e.target.closest('.sel')) document.querySelectorAll('.lista').forEach(l=>l.remove()); });
 function abrirLista(sel){
   document.querySelectorAll('.lista').forEach(l=>l.remove());
   const l = document.createElement('div'); l.className='lista';
   const busca = document.createElement('input'); busca.placeholder='Pesquisar'; l.appendChild(busca);
   const desenhar = () => { l.querySelectorAll('label').forEach(x=>x.remove());
     OPCOES[sel.dataset.campo].filter(o=>o.toLowerCase().includes(busca.value.toLowerCase())).forEach(o=>{
-      const lb=document.createElement('label'); lb.textContent=o;
-      lb.onclick=()=>{estado[sel.dataset.campo]=o; sel.querySelector('span').textContent=o; l.remove();};
+      const lb=document.createElement('label'); const cb=document.createElement('input');
+      cb.type='checkbox'; cb.checked = estado[sel.dataset.campo]===o;
+      cb.onchange=()=>{ if(cb.checked){estado[sel.dataset.campo]=o; sel.querySelector('span').textContent=o;} };
+      lb.appendChild(cb); lb.appendChild(document.createTextNode(' '+o));
       l.appendChild(lb);});
   };
   busca.oninput=desenhar; desenhar(); sel.appendChild(l); busca.focus();

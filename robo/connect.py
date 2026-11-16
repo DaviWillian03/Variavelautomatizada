@@ -124,18 +124,36 @@ class ConnectMerchan:
         campo.press_sequentially(valor, delay=60)
         campo.press("Tab")
 
-    def _escolher(self, rotulo: str, opcao: re.Pattern, busca: str = "") -> None:
+    def _escolher(self, rotulo: str, opcao: re.Pattern, termo: str) -> None:
+        """Abre a lista do campo, digita na caixa 'Pesquisar' e marca a opção.
+
+        As listas do filtro têm uma caixa 'Pesquisar' e checkboxes. Digitar antes deixa só a
+        opção certa à vista (e evita clicar num texto igual que está atrás da janela).
+        """
         dialogo = self._dialogo()
         dialogo.get_by_text(rx(rotulo, inteiro=True)).first.click()
-        if busca:
-            caixa = self.page.get_by_placeholder(rx("Pesquisar")).locator("visible=true")
-            if caixa.count():
-                caixa.first.fill(busca)
-            else:
-                self.page.keyboard.type(busca, delay=60)
-            self.page.wait_for_timeout(800)  # a lista filtra enquanto digita
-        self._visivel(self.page.get_by_text(opcao)).click()
+        self.page.wait_for_timeout(500)
+        caixa = self.page.get_by_placeholder(rx("Pesquisar")).locator("visible=true")
+        if caixa.count():
+            caixa.last.fill(termo)
+        else:
+            self.page.keyboard.type(termo, delay=60)
+        self.page.wait_for_timeout(800)  # a lista filtra enquanto digita
+
+        marcar = self.page.get_by_role("checkbox", name=opcao).locator("visible=true")
+        if marcar.count():
+            alvo = marcar.last
+            if not alvo.is_checked():
+                try:
+                    alvo.check()
+                except PlaywrightError:
+                    self.page.get_by_text(opcao).locator("visible=true").last.click()
+            if not alvo.is_checked():
+                raise LookupError(f"a opção de '{rotulo}' não ficou marcada")
+        else:
+            self.page.get_by_text(opcao).locator("visible=true").last.click()
         dialogo.get_by_text(rx("Selecione filtros")).first.click()  # fecha a lista
+        self.page.wait_for_timeout(300)
 
     def aplicar_filtros(self, periodo: Periodo, colab: Colaborador) -> None:
         def abrir():
@@ -161,16 +179,16 @@ class ConnectMerchan:
         )
         self._passo(
             "em 'Situação', marcar Respondida",
-            lambda: self._escolher("Situação", rx("Respondida", inteiro=True)),
+            lambda: self._escolher("Situação", rx("Respondida", inteiro=True), "Respondida"),
         )
         self._passo(
             "em 'Tipo de formulario', escolher Pesquisa",
-            lambda: self._escolher("Tipo de formulario", rx("Pesquisa", inteiro=True)),
+            lambda: self._escolher("Tipo de formulario", rx("Pesquisa", inteiro=True), "Pesquisa"),
         )
         self._passo(
             f"em 'Colaborador', escolher {colab.rotulo}",
             lambda: self._escolher(
-                "Colaborador", re.compile(rf"^\s*{colab.codigo}\s*-"), busca=colab.codigo
+                "Colaborador", re.compile(rf"^\s*{colab.codigo}\s*-"), colab.codigo
             ),
         )
         self._passo("clicar em 'Aplicar'", aplicar)
