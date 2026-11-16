@@ -22,6 +22,24 @@ from .interacao import Periodo, Terminal
 from .navegador import capturar_tela
 from .planilha import Colaborador, sem_acento
 
+_VARIANTES = {"a": "aáàâã", "e": "eéê", "i": "ií", "o": "oóôõ", "u": "uú", "c": "cç"}
+
+
+def rx(texto: str, inteiro: bool = False) -> re.Pattern:
+    """Regex que acha o texto com ou sem acento e sem diferenciar maiúsculas
+    (o sistema escreve 'Periodo', 'formulario', 'Inicio'…)."""
+    partes = []
+    for letra in sem_acento(texto).lower():
+        if letra in _VARIANTES:
+            partes.append(f"[{_VARIANTES[letra]}]")
+        elif letra.isspace():
+            partes.append(r"\s+")
+        else:
+            partes.append(re.escape(letra))
+    corpo = "".join(partes)
+    return re.compile(rf"^\s*{corpo}\s*$" if inteiro else corpo, re.I)
+
+
 RE_CADERNO = re.compile(r"#\s*ID\s*(\d+)\s*-\s*Caderno", re.I)
 RE_VARIAVEL = re.compile(r"variavel", re.I)
 
@@ -46,6 +64,7 @@ class ConnectMerchan:
         self.cfg = cfg
         self.log = log
         self.term = term
+        page.set_default_timeout(min(cfg.timeout_ms, 12_000))
 
     # ---------- utilitários ----------
 
@@ -70,7 +89,7 @@ class ConnectMerchan:
             return None
 
     def _aguardar_carregar(self) -> None:
-        carregando = self.page.get_by_text(re.compile(r"^\s*Carregando", re.I))
+        carregando = self.page.get_by_text(rx("Carregando"))
         try:
             carregando.first.wait_for(state="visible", timeout=1500)
         except PlaywrightTimeout:
@@ -92,60 +111,73 @@ class ConnectMerchan:
         self._passo("abrir a tela Pesquisas (menu Pesquisas → Painel de pesquisas)", acao)
 
     def _dialogo(self) -> Locator:
-        return self.page.get_by_text("Selecione filtros").locator(
+        return self.page.get_by_text(rx("Selecione filtros")).locator(
             "xpath=ancestor::*[.//button[normalize-space()='Aplicar']][1]"
         )
 
-    def _preencher_data(self, dialogo: Locator, ordem: int, valor: str) -> None:
-        campo = dialogo.get_by_text("Período Começo das Respostas").locator(
+    def _preencher_data(self, ordem: int, valor: str) -> None:
+        campo = self._dialogo().get_by_text(rx("Periodo Comeco das Respostas")).locator(
             f"xpath=following::input[{ordem}]"
         )
         campo.click()
         campo.press("Control+a")
-        campo.press_sequentially(valor, delay=40)
+        campo.press_sequentially(valor, delay=60)
         campo.press("Tab")
 
-    def _escolher(self, dialogo: Locator, rotulo: str, opcao: re.Pattern, busca: str = "") -> None:
-        dialogo.get_by_text(rotulo, exact=True).first.click()
+    def _escolher(self, rotulo: str, opcao: re.Pattern, busca: str = "") -> None:
+        dialogo = self._dialogo()
+        dialogo.get_by_text(rx(rotulo, inteiro=True)).first.click()
         if busca:
-            caixa = self.page.get_by_placeholder("Pesquisar").locator("visible=true")
+            caixa = self.page.get_by_placeholder(rx("Pesquisar")).locator("visible=true")
             if caixa.count():
                 caixa.first.fill(busca)
             else:
-                self.page.keyboard.type(busca, delay=40)
+                self.page.keyboard.type(busca, delay=60)
+            self.page.wait_for_timeout(800)  # a lista filtra enquanto digita
         self._visivel(self.page.get_by_text(opcao)).click()
-        dialogo.get_by_text("Selecione filtros").click()  # fecha a lista
+        dialogo.get_by_text(rx("Selecione filtros")).first.click()  # fecha a lista
 
     def aplicar_filtros(self, periodo: Periodo, colab: Colaborador) -> None:
-        def acao():
-            self.page.get_by_role("button", name=re.compile("Todos Filtros", re.I)).click()
-            dialogo = self._dialogo()
-            dialogo.wait_for()
-            limpar = dialogo.get_by_text("Limpar", exact=True)
+        def abrir():
+            self.page.get_by_role("button", name=rx("Todos Filtros")).click()
+            self._dialogo().wait_for()
+            limpar = self._dialogo().get_by_text(rx("Limpar", inteiro=True))
             if limpar.count() and limpar.first.is_visible():
                 limpar.first.click()
-            self._preencher_data(dialogo, 1, periodo.texto(periodo.inicio))
-            self._preencher_data(dialogo, 2, periodo.texto(periodo.fim))
-            self._escolher(dialogo, "Situação", re.compile(r"^\s*Respondida\s*$"))
-            self._escolher(dialogo, "Tipo de formulário", re.compile(r"^\s*Pesquisa\s*$"))
-            self._escolher(
-                dialogo,
-                "Colaborador",
-                re.compile(rf"^\s*{colab.codigo}\s*-"),
-                busca=colab.codigo,
-            )
-            dialogo.get_by_role("button", name="Aplicar").click()
-            dialogo.wait_for(state="hidden")
-            self._aguardar_carregar()
 
+        def aplicar():
+            self._dialogo().get_by_role("button", name=rx("Aplicar", inteiro=True)).click()
+            self._dialogo().wait_for(state="hidden")
+
+        inicio, fim = periodo.texto(periodo.inicio), periodo.texto(periodo.fim)
+        self._passo("clicar em 'Todos Filtros'", abrir)
         self._passo(
-            f"filtrar: Período Começo das Respostas {periodo.texto(periodo.inicio)} a "
-            f"{periodo.texto(periodo.fim)}, Situação Respondida, Tipo Pesquisa, "
-            f"Colaborador {colab.rotulo} → Aplicar",
-            acao,
+            f"em 'Periodo Começo das Respostas', preencher Data Inicio = {inicio}",
+            lambda: self._preencher_data(1, inicio),
         )
+        self._passo(
+            f"em 'Periodo Começo das Respostas', preencher Data Fim = {fim}",
+            lambda: self._preencher_data(2, fim),
+        )
+        self._passo(
+            "em 'Situação', marcar Respondida",
+            lambda: self._escolher("Situação", rx("Respondida", inteiro=True)),
+        )
+        self._passo(
+            "em 'Tipo de formulario', escolher Pesquisa",
+            lambda: self._escolher("Tipo de formulario", rx("Pesquisa", inteiro=True)),
+        )
+        self._passo(
+            f"em 'Colaborador', escolher {colab.rotulo}",
+            lambda: self._escolher(
+                "Colaborador", re.compile(rf"^\s*{colab.codigo}\s*-"), busca=colab.codigo
+            ),
+        )
+        self._passo("clicar em 'Aplicar'", aplicar)
+        self._aguardar_carregar()
+
         # Trava de segurança: nunca exportar com o colaborador errado no filtro.
-        chip = self.page.get_by_text(re.compile(rf"Colaborador:\s*{colab.codigo}\b"))
+        chip = self.page.get_by_text(re.compile(rf"Colaborador:\s*{colab.codigo}\b", re.I))
         try:
             chip.first.wait_for(timeout=5000)
         except PlaywrightTimeout:
@@ -155,7 +187,7 @@ class ConnectMerchan:
 
     def mostrar_100_por_pagina(self) -> None:
         def acao():
-            rotulo = self.page.get_by_text("Registros por página")
+            rotulo = self.page.get_by_text(rx("Registros por pagina"))
             if not rotulo.count():
                 return
             seletor = rotulo.first.locator("xpath=preceding-sibling::*[1]")
@@ -201,7 +233,7 @@ class ConnectMerchan:
         return -1 if resultado is None else resultado
 
     def _painel_aberto(self) -> bool:
-        return self.page.get_by_text("Relatórios", exact=True).locator("visible=true").count() > 0
+        return self.page.get_by_text(rx("Relatorios", inteiro=True)).locator("visible=true").count() > 0
 
     def abrir_relatorios(self) -> bool:
         if self._painel_aberto():
@@ -210,7 +242,7 @@ class ConnectMerchan:
             self.page.locator(self.cfg.seletor_relatorios).locator("visible=true").first.click(
                 timeout=3000
             )
-            self.page.get_by_text("Relatórios", exact=True).first.wait_for(timeout=3000)
+            self.page.get_by_text(rx("Relatorios", inteiro=True)).first.wait_for(timeout=3000)
         except PlaywrightError:
             return False
         return True
@@ -219,7 +251,7 @@ class ConnectMerchan:
         if self._painel_aberto():
             self.page.keyboard.press("Escape")
             if self._painel_aberto():
-                self.page.get_by_text("Todas as pesquisas").first.click()
+                self.page.get_by_text(rx("Todas as pesquisas")).first.click()
 
     def ids_cadernos(self) -> set[int] | None:
         """IDs dos 'Caderno Pesquisas Pdf' já listados no painel Relatórios (None = não consegui ver)."""
@@ -236,7 +268,7 @@ class ConnectMerchan:
         def acao():
             self.page.get_by_role("button", name=re.compile(r"^\s*Exportar", re.I)).click()
             self._visivel(
-                self.page.get_by_text(re.compile(r"Export do Caderno\s*\(PDF\)", re.I))
+                self.page.get_by_text(rx("Export do Caderno (PDF)"))
             ).click()
 
         self._passo("clicar em Exportar → 7. Export do Caderno (PDF)", acao)

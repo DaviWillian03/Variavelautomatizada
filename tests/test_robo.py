@@ -230,3 +230,13 @@ def test_fluxo_completo(contexto, cfg, servidor):
         "1003 - Carla Ficticia Dias",
     ]
     assert list(cfg.pasta_saida.glob("*_resumo.txt"))
+
+
+def test_textos_com_ou_sem_acento():
+    from robo.connect import rx
+
+    assert rx("Período Começo das Respostas").search("Periodo Começo das Respostas")
+    assert rx("Tipo de formulário", inteiro=True).search("Tipo de formulario")
+    assert rx("Relatorios", inteiro=True).search("  Relatórios ")
+    assert not rx("Pesquisa", inteiro=True).search("Pesquisa Prioritária")
+    assert rx("Export do Caderno (PDF)").search("7. Export do Caderno (PDF)")
